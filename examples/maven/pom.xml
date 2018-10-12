@@ -20,56 +20,55 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.example</groupId>
-  <artifactId>maven-plugin-example</artifactId>
+  <artifactId>errorprone-example</artifactId>
   <version>1.0-SNAPSHOT</version>
-  <packaging>pom</packaging>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <javac.version>9+181-r4173-1</javac.version>
+  </properties>
 
   <build>
     <plugins>
-      <!-- Turn on Error Prone -->
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>3.3</version>
+        <version>3.8.0</version>
         <configuration>
-          <compilerId>javac-with-errorprone</compilerId>
-          <forceJavacCompilerUse>true</forceJavacCompilerUse>
-          <!-- maven-compiler-plugin defaults to targeting Java 5, but our
-               javac only supports >=6 -->
           <source>8</source>
           <target>8</target>
-          <showWarnings>true</showWarnings>
+          <compilerArgs>
+            <arg>-XDcompilePolicy=simple</arg>
+            <arg>-Xplugin:ErrorProne</arg>
+          </compilerArgs>
+          <annotationProcessorPaths>
+            <path>
+              <groupId>com.google.errorprone</groupId>
+              <artifactId>error_prone_core</artifactId>
+              <version>2.3.2-SNAPSHOT</version>
+            </path>
+          </annotationProcessorPaths>
         </configuration>
-        <dependencies>
-          <dependency>
-            <groupId>org.codehaus.plexus</groupId>
-            <artifactId>plexus-compiler-javac-errorprone</artifactId>
-            <version>2.8</version>
-          </dependency>
-          <!-- override plexus-compiler-javac-errorprone's dependency on
-               Error Prone with the latest version -->
-          <dependency>
-            <groupId>com.google.errorprone</groupId>
-            <artifactId>error_prone_core</artifactId>
-            <version>2.3.2-SNAPSHOT</version>
-          </dependency>
-        </dependencies>
       </plugin>
     </plugins>
   </build>
 
+  <!-- using github.com/google/error-prone-javac is required when running on JDK 8 -->
   <profiles>
     <profile>
-      <id>fixerrors</id>
+      <id>jdk8</id>
+      <activation>
+        <jdk>1.8</jdk>
+      </activation>
       <build>
         <plugins>
           <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-compiler-plugin</artifactId>
             <configuration>
+              <fork>true</fork>
               <compilerArgs combine.children="append">
-                <compilerArg>-XepPatchLocation:${basedir}</compilerArg>
-                <compilerArg>-XepPatchChecks:DeadException,GetClassOnClass</compilerArg>
+                <arg>-J-Xbootclasspath/p:${settings.localRepository}/com/google/errorprone/javac/${javac.version}/javac-${javac.version}.jar</arg>
               </compilerArgs>
             </configuration>
           </plugin>

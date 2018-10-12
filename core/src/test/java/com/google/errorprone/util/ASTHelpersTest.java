@@ -34,13 +34,16 @@ import com.google.common.collect.Iterables;
 import com.google.common.io.ByteStreams;
 import com.google.errorprone.BugPattern;
 import com.google.errorprone.BugPattern.Category;
+import com.google.errorprone.BugPattern.ProvidesFix;
 import com.google.errorprone.BugPattern.SeverityLevel;
 import com.google.errorprone.CompilationTestHelper;
 import com.google.errorprone.VisitorState;
 import com.google.errorprone.bugpatterns.BugChecker;
 import com.google.errorprone.bugpatterns.BugChecker.MethodInvocationTreeMatcher;
+import com.google.errorprone.bugpatterns.BugChecker.MethodTreeMatcher;
 import com.google.errorprone.bugpatterns.BugChecker.ParameterizedTypeTreeMatcher;
 import com.google.errorprone.bugpatterns.BugChecker.VariableTreeMatcher;
+import com.google.errorprone.fixes.SuggestedFix;
 import com.google.errorprone.matchers.CompilerBasedAbstractTest;
 import com.google.errorprone.matchers.Description;
 import com.google.errorprone.matchers.Matcher;
@@ -54,6 +57,7 @@ import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ExpressionStatementTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.LiteralTree;
+import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.NewClassTree;
@@ -308,6 +312,42 @@ public class ASTHelpersTest extends CompilerBasedAbstractTest {
               setAssertionsComplete();
             }
             return super.visitClass(tree, state);
+          }
+        };
+    tests.add(scanner);
+    assertCompiles(scanner);
+  }
+
+  @Test
+  public void testInheritedMethodAnnotation() {
+    writeFile(
+        "com/google/errorprone/util/InheritedAnnotation.java",
+        "package com.google.errorprone.util;",
+        "import java.lang.annotation.Inherited;",
+        "@Inherited",
+        "public @interface InheritedAnnotation {}");
+    writeFile(
+        "B.java",
+        "import com.google.errorprone.util.InheritedAnnotation;",
+        "public class B {",
+        "  @InheritedAnnotation",
+        "  void f() {}",
+        "}");
+    writeFile("C.java", "public class C extends B {}");
+
+    TestScanner scanner =
+        new TestScanner() {
+          @Override
+          public Void visitMethod(MethodTree tree, VisitorState state) {
+            if (tree.getName().contentEquals("f")) {
+              assertMatch(
+                  tree,
+                  state,
+                  (MethodTree t, VisitorState s) ->
+                      ASTHelpers.hasAnnotation(t, InheritedAnnotation.class, s));
+              setAssertionsComplete();
+            }
+            return super.visitMethod(tree, state);
           }
         };
     tests.add(scanner);
@@ -685,6 +725,63 @@ public class ASTHelpersTest extends CompilerBasedAbstractTest {
         .doTest();
   }
 
+  /* Tests inSamePackage. */
+
+  private TestScanner inSamePackageScanner(final boolean expectedBoolean) {
+    return new TestScanner() {
+      @Override
+      public Void visitMemberSelect(MemberSelectTree tree, VisitorState state) {
+        setAssertionsComplete();
+        Symbol targetSymbol = ASTHelpers.getSymbol(tree);
+        assertThat(ASTHelpers.inSamePackage(targetSymbol, state)).isEqualTo(expectedBoolean);
+        return super.visitMemberSelect(tree, state);
+      }
+    };
+  }
+
+  @Test
+  public void testSamePackagePositive() {
+    writeFile(
+        "A.java",
+        "package p;",
+        "public class A { ",
+        "  public static final String BAR = \"BAR\";",
+        "}");
+    writeFile(
+        "B.java",
+        "package p;",
+        "public class B { ",
+        "  public String bar() {",
+        "    return A.BAR;",
+        "  }",
+        "}");
+    TestScanner scanner = inSamePackageScanner(true);
+    tests.add(scanner);
+    assertCompiles(scanner);
+  }
+
+  @Test
+  public void testSamePackageNegative() {
+    writeFile(
+        "A.java",
+        "package p;",
+        "public class A { ",
+        "  public static final String BAR = \"BAR\";",
+        "}");
+    writeFile(
+        "B.java",
+        "package q;",
+        "import p.A;",
+        "public class B { ",
+        "  public String bar() {",
+        "    return A.BAR;",
+        "  }",
+        "}");
+    TestScanner scanner = inSamePackageScanner(false);
+    tests.add(scanner);
+    assertCompiles(scanner);
+  }
+
   /* Test infrastructure */
 
   private abstract static class TestScanner extends Scanner {
@@ -860,13 +957,35 @@ public class ASTHelpersTest extends CompilerBasedAbstractTest {
         .doTest();
   }
 
+  @Test
+  public void targetType_methodHandle() {
+    if (!isJdk8OrEarlier()) {
+      // JDK >= 9 complains about splitting java.lang.invoke
+      return;
+    }
+    CompilationTestHelper.newInstance(TargetTypeChecker.class, getClass())
+        .addSourceLines(
+            "Test.java",
+            "package java.lang.invoke;",
+            "class Test {",
+            "  void f(MethodHandle mh) throws Throwable {",
+            "    // BUG: Diagnostic contains:",
+            "    mh.invokeBasic(detectString(), detectString(), detectString());",
+            "  }",
+            "  static String detectString() {",
+            "    return \"\";",
+            "  }",
+            "}")
+        .doTest();
+  }
+
   /** A {@link BugChecker} that prints the target type of a parameterized type. */
   @BugPattern(
-    name = "TargetTypeCheckerParentTypeNotMatched",
-    category = Category.ONE_OFF,
-    severity = SeverityLevel.ERROR,
-    summary = "Prints the target type for ParameterizedTypeTree, which is not handled explicitly."
-  )
+      name = "TargetTypeCheckerParentTypeNotMatched",
+      category = Category.ONE_OFF,
+      severity = SeverityLevel.ERROR,
+      summary =
+          "Prints the target type for ParameterizedTypeTree, which is not handled explicitly.")
   public static class TargetTypeCheckerParentTypeNotMatched extends BugChecker
       implements ParameterizedTypeTreeMatcher {
 
@@ -941,9 +1060,7 @@ public class ASTHelpersTest extends CompilerBasedAbstractTest {
         JavacElements.instance(tool.getContext()).getTypeElement(Lib.class.getCanonicalName());
     VarSymbol field =
         (VarSymbol)
-            element
-                .getEnclosedElements()
-                .stream()
+            element.getEnclosedElements().stream()
                 .filter(e -> e.getSimpleName().contentEquals("field"))
                 .findAny()
                 .get();
@@ -954,9 +1071,7 @@ public class ASTHelpersTest extends CompilerBasedAbstractTest {
 
     MethodSymbol method =
         (MethodSymbol)
-            element
-                .getEnclosedElements()
-                .stream()
+            element.getEnclosedElements().stream()
                 .filter(e -> e.getSimpleName().contentEquals("method"))
                 .findAny()
                 .get();
@@ -976,5 +1091,133 @@ public class ASTHelpersTest extends CompilerBasedAbstractTest {
         .containsExactly(
             "@com.google.errorprone.util.ASTHelpersTest.B(\"four\")",
             "@com.google.errorprone.util.ASTHelpersTest.A(10)");
+  }
+
+  /** A {@link BugChecker} that prints if the method can be overridden. */
+  @BugPattern(
+      name = "MethodCanBeOverriddenChecker",
+      category = Category.ONE_OFF,
+      severity = SeverityLevel.ERROR,
+      summary = "Prints whether the method can be overridden.",
+      providesFix = ProvidesFix.REQUIRES_HUMAN_ATTENTION)
+  public static class MethodCanBeOverriddenChecker extends BugChecker implements MethodTreeMatcher {
+    @Override
+    public Description matchMethod(MethodTree tree, VisitorState state) {
+      boolean methodCanBeOverridden = ASTHelpers.methodCanBeOverridden(ASTHelpers.getSymbol(tree));
+      String description = methodCanBeOverridden ? "Can be overridden" : "Cannot be overridden";
+      return describeMatch(tree, SuggestedFix.prefixWith(tree, "/* " + description + " */\n"));
+    }
+  }
+
+  @Test
+  public void methodCanBeOverridden_class() {
+    CompilationTestHelper.newInstance(MethodCanBeOverriddenChecker.class, getClass())
+        .addSourceLines(
+            "Test.java",
+            "class Test {",
+            "  // BUG: Diagnostic contains: Cannot be overridden",
+            "  Test() {}",
+            "",
+            "  // BUG: Diagnostic contains: Can be overridden",
+            "  void canBeOverridden() {}",
+            "",
+            "  // BUG: Diagnostic contains: Cannot be overridden",
+            "  final void cannotBeOverriddenBecauseFinal() {}",
+            "",
+            "  // BUG: Diagnostic contains: Cannot be overridden",
+            "  static void cannotBeOverriddenBecauseStatic() {}",
+            "",
+            "  // BUG: Diagnostic contains: Cannot be overridden",
+            "  private void cannotBeOverriddenBecausePrivate() {}",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void methodCanBeOverridden_interface() {
+    CompilationTestHelper.newInstance(MethodCanBeOverriddenChecker.class, getClass())
+        .addSourceLines(
+            "Test.java",
+            "interface Test {",
+            "  // BUG: Diagnostic contains: Can be overridden",
+            "  void canBeOverridden();",
+            "",
+            "  // BUG: Diagnostic contains: Can be overridden",
+            "  default void defaultCanBeOverridden() {}",
+            "",
+            "  // BUG: Diagnostic contains: Cannot be overridden",
+            "  static void cannotBeOverriddenBecauseStatic() {}",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void methodCanBeOverridden_enum() {
+    CompilationTestHelper.newInstance(MethodCanBeOverriddenChecker.class, getClass())
+        .addSourceLines(
+            "Test.java",
+            "enum Test {",
+            "  VALUE {",
+            "    // BUG: Diagnostic contains: Cannot be overridden",
+            "    @Override void abstractCanBeOverridden() {}",
+            "",
+            "    // BUG: Diagnostic contains: Cannot be overridden",
+            "    void declaredOnlyInValue() {}",
+            "  };",
+            "",
+            "  // BUG: Diagnostic contains: Can be overridden",
+            "  abstract void abstractCanBeOverridden();",
+            "",
+            "  // BUG: Diagnostic contains: Can be overridden",
+            "  void canBeOverridden() {}",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void methodCanBeOverridden_anonymous() {
+    CompilationTestHelper.newInstance(MethodCanBeOverriddenChecker.class, getClass())
+        .addSourceLines(
+            "Test.java",
+            "class Test {",
+            "  Object obj = new Object() {",
+            "    // BUG: Diagnostic contains: Cannot be overridden",
+            "    void inAnonymousClass() {}",
+            "  };",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void testDeprecatedClassDeclaration() {
+    writeFile(
+        "A.java", //
+        "@Deprecated",
+        "public class A {",
+        "}");
+    TestScanner scanner =
+        new TestScanner() {
+          @Override
+          public Void visitClass(ClassTree node, VisitorState visitorState) {
+            // we specifically want to test getSymbol(Tree), not getSymbol(ClassTree)
+            Tree tree = node;
+            assertThat(ASTHelpers.getSymbol(tree).isDeprecated()).isTrue();
+            setAssertionsComplete();
+            return super.visitClass(node, visitorState);
+          }
+        };
+    tests.add(scanner);
+    assertCompiles(scanner);
+  }
+
+  private static boolean isJdk8OrEarlier() {
+    try {
+      Method versionMethod = Runtime.class.getMethod("version");
+      Object version = versionMethod.invoke(null);
+      int majorVersion = (int) version.getClass().getMethod("major").invoke(version);
+      return majorVersion <= 8;
+    } catch (ReflectiveOperationException e) {
+      return true;
+    }
   }
 }

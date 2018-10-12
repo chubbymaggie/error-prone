@@ -20,10 +20,10 @@ import static com.google.errorprone.BugPattern.Category.JDK;
 import static com.google.errorprone.BugPattern.SeverityLevel.ERROR;
 import static com.google.errorprone.matchers.Description.NO_MATCH;
 import static com.google.errorprone.matchers.Matchers.allOf;
-import static com.google.errorprone.matchers.Matchers.anyOf;
 import static com.google.errorprone.matchers.Matchers.instanceMethod;
 import static com.google.errorprone.matchers.Matchers.receiverSameAsArgument;
 import static com.google.errorprone.matchers.Matchers.sameArgument;
+import static com.google.errorprone.matchers.Matchers.staticEqualsInvocation;
 import static com.google.errorprone.matchers.Matchers.toType;
 import static com.google.errorprone.matchers.method.MethodMatchers.staticMethod;
 
@@ -48,7 +48,6 @@ import com.sun.tools.javac.tree.JCTree.JCClassDecl;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
 import com.sun.tools.javac.tree.JCTree.JCVariableDecl;
 import java.util.List;
-import java.util.regex.Pattern;
 import javax.annotation.Nullable;
 
 /** @author bhagwani@google.com (Sumit Bhagwani) */
@@ -63,7 +62,7 @@ public class SelfEquals extends BugChecker implements MethodInvocationTreeMatche
   private static final Matcher<Tree> ASSERTION =
       toType(
           MethodInvocationTree.class,
-          staticMethod().anyClass().withNameMatching(Pattern.compile("assertTrue|assertThat")));
+          staticMethod().anyClass().namedAnyOf("assertTrue", "assertThat"));
 
   private static final Matcher<MethodInvocationTree> INSTANCE_MATCHER =
       allOf(
@@ -74,11 +73,7 @@ public class SelfEquals extends BugChecker implements MethodInvocationTreeMatche
           receiverSameAsArgument(0));
 
   private static final Matcher<MethodInvocationTree> STATIC_MATCHER =
-      allOf(
-          anyOf(
-              staticMethod().onClass("com.google.common.base.Objects").named("equal"),
-              staticMethod().onClass("java.util.Objects").named("equals")),
-          sameArgument(0, 1));
+      allOf(staticEqualsInvocation(), sameArgument(0, 1));
 
   @Override
   public Description matchMethodInvocation(MethodInvocationTree tree, VisitorState state) {

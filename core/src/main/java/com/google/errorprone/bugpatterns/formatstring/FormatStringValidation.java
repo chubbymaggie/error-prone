@@ -26,6 +26,7 @@ import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.ConditionalExpressionTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.Tree;
+import com.sun.tools.javac.code.Symbol.MethodSymbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Types;
 import edu.umd.cs.findbugs.formatStringChecker.ExtraFormatArgumentsException;
@@ -92,7 +93,9 @@ public class FormatStringValidation {
 
   @Nullable
   public static ValidationResult validate(
-      Collection<? extends ExpressionTree> arguments, final VisitorState state) {
+      @Nullable MethodSymbol formatMethodSymbol,
+      Collection<? extends ExpressionTree> arguments,
+      final VisitorState state) {
 
     Deque<ExpressionTree> args = new ArrayDeque<>(arguments);
 
@@ -103,7 +106,7 @@ public class FormatStringValidation {
 
     // If the only argument is an Object[], it's an explicit varargs call.
     // Bail out, since we don't know what the actual argument types are.
-    if (args.size() == 1) {
+    if (args.size() == 1 && (formatMethodSymbol == null || formatMethodSymbol.isVarArgs())) {
       Type type = ASTHelpers.getType(Iterables.getOnlyElement(args));
       if (type instanceof Type.ArrayType
           && ASTHelpers.isSameType(
@@ -139,6 +142,7 @@ public class FormatStringValidation {
    * For example, an intance of {@link Integer} will be returned for an input of type {@code int} or
    * {@link Integer}.
    */
+  @Nullable
   private static Object getInstance(Tree tree, VisitorState state) {
     Object value = ASTHelpers.constValue(tree);
     if (value != null) {
@@ -148,6 +152,7 @@ public class FormatStringValidation {
     return getInstance(type, state);
   }
 
+  @Nullable
   private static Object getInstance(Type type, VisitorState state) {
     Types types = state.getTypes();
     if (type.getKind() == TypeKind.NULL) {
@@ -185,25 +190,29 @@ public class FormatStringValidation {
           throw new AssertionError(type.getKind());
       }
     }
-    if (types.isSubtype(type, state.getSymtab().stringType)) {
+    if (isSubtype(types, type, state.getSymtab().stringType)) {
       return String.valueOf("string");
     }
-    if (types.isSubtype(type, state.getTypeFromString(BigDecimal.class.getName()))) {
+    if (isSubtype(types, type, state.getTypeFromString(BigDecimal.class.getName()))) {
       return BigDecimal.valueOf(42.0d);
     }
-    if (types.isSubtype(type, state.getTypeFromString(BigInteger.class.getName()))) {
+    if (isSubtype(types, type, state.getTypeFromString(BigInteger.class.getName()))) {
       return BigInteger.valueOf(43L);
     }
-    if (types.isSubtype(type, state.getTypeFromString(Date.class.getName()))) {
+    if (isSubtype(types, type, state.getTypeFromString(Date.class.getName()))) {
       return new Date();
     }
-    if (types.isSubtype(type, state.getTypeFromString(Calendar.class.getName()))) {
+    if (isSubtype(types, type, state.getTypeFromString(Calendar.class.getName()))) {
       return new GregorianCalendar();
     }
-    if (types.isSubtype(type, state.getTypeFromString(TemporalAccessor.class.getName()))) {
+    if (isSubtype(types, type, state.getTypeFromString(TemporalAccessor.class.getName()))) {
       return LocalDateTime.ofInstant(Instant.now(), ZoneId.systemDefault());
     }
     return new Object();
+  }
+
+  private static boolean isSubtype(Types types, Type t, Type s) {
+    return s != null && types.isSubtype(t, s);
   }
 
   private static ValidationResult validate(String formatString, Iterable<Object> arguments) {

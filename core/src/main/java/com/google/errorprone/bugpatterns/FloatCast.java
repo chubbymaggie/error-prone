@@ -40,7 +40,6 @@ import com.sun.tools.javac.code.Symtab;
 import com.sun.tools.javac.code.Type;
 import java.util.EnumSet;
 import java.util.Set;
-import java.util.regex.Pattern;
 import javax.lang.model.type.TypeKind;
 
 /** @author cushon@google.com (Liam Miller-Cushon) */
@@ -56,9 +55,7 @@ public class FloatCast extends BugChecker implements TypeCastTreeMatcher {
   static final Set<TypeKind> INTEGRAL = EnumSet.of(TypeKind.LONG, TypeKind.INT);
 
   static final Matcher<ExpressionTree> BLACKLIST =
-      staticMethod()
-          .onClass("java.lang.Math")
-          .withNameMatching(Pattern.compile("floor|ceil|signum|rint"));
+      staticMethod().onClass("java.lang.Math").namedAnyOf("floor", "ceil", "signum", "rint");
 
   static final Matcher<ExpressionTree> POW = staticMethod().onClass("java.lang.Math").named("pow");
 
@@ -109,8 +106,7 @@ public class FloatCast extends BugChecker implements TypeCastTreeMatcher {
     }
     if (POW.matches(tree.getExpression(), state)) {
       MethodInvocationTree pow = (MethodInvocationTree) tree.getExpression();
-      if (pow.getArguments()
-          .stream()
+      if (pow.getArguments().stream()
           .map(ASTHelpers::getType)
           .filter(x -> x != null)
           .map(state.getTypes()::unboxedTypeOrType)

@@ -23,7 +23,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Unit test for @link{RestrictedApiChecker} */
+/** Unit test for {@link RestrictedApiChecker} */
 @RunWith(JUnit4.class)
 public class RestrictedApiCheckerTest {
   private CompilationTestHelper helper;
@@ -165,7 +165,7 @@ public class RestrictedApiCheckerTest {
 
   // Regression test for b/36160747
   @Test
-  public void testAllowAllDefintionsInFile() {
+  public void testAllowAllDefinitionsInFile() {
     helper
         .addSourceLines(
             "Testcase.java",
@@ -193,4 +193,5 @@ public class RestrictedApiCheckerTest {
             "}")
         .doTest();
   }
+
 }

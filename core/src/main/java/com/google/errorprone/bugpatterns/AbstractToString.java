@@ -133,6 +133,9 @@ public abstract class AbstractToString extends BugChecker
     if (toStringKind == ToStringKind.NONE) {
       return NO_MATCH;
     }
+    if (!typePredicate().apply(type, state)) {
+      return NO_MATCH;
+    }
     Optional<Fix> fix;
     switch (toStringKind) {
       case IMPLICIT:
@@ -143,9 +146,6 @@ public abstract class AbstractToString extends BugChecker
         break;
       default:
         throw new AssertionError(toStringKind);
-    }
-    if (!typePredicate().apply(type, state)) {
-      return NO_MATCH;
     }
     return maybeFix(tree, state, type, fix);
   }

@@ -17,7 +17,7 @@ package com.google.errorprone.bugpatterns;
 
 import com.google.errorprone.BugCheckerRefactoringTestHelper;
 import com.google.errorprone.BugCheckerRefactoringTestHelper.TestMode;
-import java.io.IOException;
+import com.google.errorprone.CompilationTestHelper;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -33,7 +33,7 @@ public class ComplexBooleanConstantTest {
       BugCheckerRefactoringTestHelper.newInstance(new ComplexBooleanConstant(), getClass());
 
   @Test
-  public void refactorTest() throws IOException {
+  public void refactorTest() {
     refactoringHelper
         .addInputLines(
             "in/Foo.java",
@@ -51,6 +51,16 @@ public class ComplexBooleanConstantTest {
             "  }",
             "  boolean barNotEquals() {",
             "    return 1 != 1;",
+            "  }",
+            "  boolean f(boolean x) {",
+            "    boolean r;",
+            "    r = x || !false;",
+            "    r = x || !true;",
+            "    r = x || true;",
+            "    r = x && !false;",
+            "    r = x && !true;",
+            "    r = x && false;",
+            "    return r;",
             "  }",
             "}")
         .addOutputLines(
@@ -70,7 +80,33 @@ public class ComplexBooleanConstantTest {
             "  boolean barNotEquals() {",
             "    return false;",
             "  }",
+            "  boolean f(boolean x) {",
+            "    boolean r;",
+            "    r = true;",
+            "    r = x || !true;",
+            "    r = true;",
+            "    r = x && !false;",
+            "    r = false;",
+            "    r = false;",
+            "    return r;",
+            "  }",
             "}")
-        .doTest(TestMode.AST_MATCH);
+        .doTest(TestMode.TEXT_MATCH);
+  }
+
+  @Test
+  public void negative() {
+    CompilationTestHelper.newInstance(ComplexBooleanConstant.class, getClass())
+        .addSourceLines(
+            "A.java", //
+            "package a;",
+            "class A {",
+            "  static final int A = 1;",
+            "  static final int B = 2;",
+            "  static final boolean C = A > B;",
+            "  static final boolean D = A + B > 0;",
+            "  static final boolean E = (A + B) > 0;",
+            "}")
+        .doTest();
   }
 }

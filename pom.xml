@@ -37,7 +37,7 @@
     <javac.version>9+181-r4173-1</javac.version>
     <autovalue.version>1.5.3</autovalue.version>
     <junit.version>4.13-SNAPSHOT</junit.version>
-    <dataflow.version>2.5.0</dataflow.version>
+    <dataflow.version>2.5.3</dataflow.version>
   </properties>
 
   <modules>
@@ -49,7 +49,6 @@
     <module>type_annotations</module>
     <module>docgen</module>
     <module>docgen_processor</module>
-    <module>ant</module>
     <module>refaster</module>
   </modules>
 
@@ -72,6 +71,7 @@
         <directory>src/main/java</directory>
         <includes>
           <include>**/*.properties</include>
+          <include>**/*.binarypb</include>
         </includes>
       </resource>
     </resources>
@@ -91,6 +91,12 @@
           <version>2.1</version>
           <configuration>
             <dependencyReducedPomLocation>${project.build.directory}/dependency-reduced-pom.xml</dependencyReducedPomLocation>
+          </configuration>
+        </plugin>
+        <plugin>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <configuration>
+            <runOrder>alphabetical</runOrder>
           </configuration>
         </plugin>
       </plugins>

@@ -165,7 +165,7 @@ public final class NamedParameterComment {
   }
 
   /**
-   * Generate comment text which @{code exactMatch} would consider to match the formal parameter
+   * Generate comment text which {@code exactMatch} would consider to match the formal parameter
    * name.
    */
   static String toCommentText(String formal) {
@@ -183,8 +183,7 @@ public final class NamedParameterComment {
    * available.
    */
   public static boolean containsSyntheticParameterName(MethodSymbol sym) {
-    return sym.getParameters()
-        .stream()
+    return sym.getParameters().stream()
         .anyMatch(p -> SYNTHETIC_PARAMETER_NAME.matcher(p.getSimpleName()).matches());
   }
 

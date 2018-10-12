@@ -32,6 +32,7 @@ import com.google.errorprone.matchers.Description;
 import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.IdentifierTree;
+import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
@@ -62,8 +63,7 @@ public class InconsistentCapitalization extends BugChecker implements ClassTreeM
     }
 
     ImmutableMap<String, Symbol> fieldNamesMap =
-        fields
-            .stream()
+        fields.stream()
             .collect(
                 toImmutableMap(symbol -> symbol.toString().toLowerCase(), x -> x, (x, y) -> x));
     ImmutableMap<TreePath, Symbol> matchedParameters =
@@ -198,6 +198,15 @@ public class InconsistentCapitalization extends BugChecker implements ClassTreeM
         ImmutableMap.Builder<TreePath, Symbol> matchedParameters) {
       this.fields = fields;
       this.matchedParameters = matchedParameters;
+    }
+
+    @Override
+    public Void visitMethod(MethodTree tree, Void unused) {
+      // Ignore synthetic constructors:
+      if (ASTHelpers.isGeneratedConstructor(tree)) {
+        return null;
+      }
+      return super.visitMethod(tree, null);
     }
 
     @Override

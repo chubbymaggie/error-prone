@@ -184,7 +184,6 @@ public class BaseErrorProneJavaCompiler implements JavaCompiler {
    * Sets javac's {@code -XDcompilePolicy} flag to ensure that all classes in a file are attributed
    * before any of them are lowered. Error Prone depends on this behavior when analyzing files that
    * contain multiple top-level classes.
-   *
    */
   private static ImmutableList<String> setCompilePolicyToByFile(ImmutableList<String> args) {
     for (String arg : args) {
@@ -211,7 +210,7 @@ public class BaseErrorProneJavaCompiler implements JavaCompiler {
     if (!epOptions.patchingOptions().doRefactor()) {
       return ErrorProneAnalyzer.createByScanningForPlugins(scannerSupplier, epOptions, context);
     }
-    refactoringCollection[0] = RefactoringCollection.refactor(epOptions.patchingOptions());
+    refactoringCollection[0] = RefactoringCollection.refactor(epOptions.patchingOptions(), context);
 
     // Refaster refactorer or using builtin checks
     CodeTransformer codeTransformer =
@@ -220,12 +219,14 @@ public class BaseErrorProneJavaCompiler implements JavaCompiler {
             .customRefactorer()
             .or(
                 () -> {
-                  ScannerSupplier toUse = ErrorPronePlugins.loadPlugins(scannerSupplier, context);
+                  ScannerSupplier toUse =
+                      ErrorPronePlugins.loadPlugins(scannerSupplier, context)
+                          .applyOverrides(epOptions);
                   Set<String> namedCheckers = epOptions.patchingOptions().namedCheckers();
                   if (!namedCheckers.isEmpty()) {
                     toUse = toUse.filter(bci -> namedCheckers.contains(bci.canonicalName()));
                   }
-                  return ErrorProneScannerTransformer.create(toUse.applyOverrides(epOptions).get());
+                  return ErrorProneScannerTransformer.create(toUse.get());
                 })
             .get();
 

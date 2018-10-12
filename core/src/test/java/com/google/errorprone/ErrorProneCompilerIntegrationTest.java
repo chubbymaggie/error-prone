@@ -22,20 +22,18 @@ import static com.google.errorprone.BugPattern.SeverityLevel.ERROR;
 import static com.google.errorprone.DiagnosticTestHelper.diagnosticMessage;
 import static com.google.errorprone.matchers.Description.NO_MATCH;
 import static com.google.errorprone.util.ASTHelpers.constValue;
-import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.util.Locale.ENGLISH;
 import static org.hamcrest.CoreMatchers.is;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.assertThat;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assume.assumeTrue;
 
-import com.google.common.base.Joiner;
 import com.google.common.base.StandardSystemProperty;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
-import com.google.common.io.ByteStreams;
 import com.google.errorprone.bugpatterns.BadShiftAmount;
 import com.google.errorprone.bugpatterns.BugChecker;
 import com.google.errorprone.bugpatterns.BugChecker.ExpressionStatementTreeMatcher;
@@ -54,18 +52,11 @@ import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.Tree;
 import com.sun.tools.javac.main.Main.Result;
-import java.io.File;
-import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
-import java.util.jar.JarEntry;
-import java.util.jar.JarOutputStream;
 import javax.lang.model.element.Name;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
@@ -80,7 +71,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 /**
- * Integration tests for {@link ErrorProneCompiler}.
+ * Integration tests for the Error Prone compiler.
  *
  * @author alexeagle@google.com (Alex Eagle)
  */
@@ -106,7 +97,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void fileWithError() throws Exception {
+  public void fileWithError() {
     Result exitCode =
         compiler.compile(
             compiler
@@ -122,7 +113,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void fileWithWarning() throws Exception {
+  public void fileWithWarning() {
     compilerBuilder.report(ScannerSupplier.fromBugCheckerClasses(NonAtomicVolatileUpdate.class));
     compiler = compilerBuilder.build();
     Result exitCode =
@@ -142,7 +133,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void fileWithMultipleTopLevelClasses() throws Exception {
+  public void fileWithMultipleTopLevelClasses() {
     Result exitCode =
         compiler.compile(
             compiler
@@ -152,7 +143,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void fileWithMultipleTopLevelClassesExtends() throws Exception {
+  public void fileWithMultipleTopLevelClassesExtends() {
     Result exitCode =
         compiler.compile(
             compiler
@@ -169,7 +160,7 @@ public class ErrorProneCompilerIntegrationTest {
    * in the matchers.
    */
   @Test
-  public void fileWithMultipleTopLevelClassesExtendsWithError() throws Exception {
+  public void fileWithMultipleTopLevelClassesExtendsWithError() {
     Result exitCode =
         compiler.compile(
             compiler
@@ -196,7 +187,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void unhandledExceptionsAreReportedWithoutBugParadeLink() throws Exception {
+  public void unhandledExceptionsAreReportedWithoutBugParadeLink() {
     compilerBuilder.report(ScannerSupplier.fromBugCheckerClasses(Throwing.class));
     compiler = compilerBuilder.build();
     Result exitCode =
@@ -221,7 +212,7 @@ public class ErrorProneCompilerIntegrationTest {
 
   /** Regression test for Issue 188, error-prone doesn't work with annotation processors. */
   @Test
-  public void annotationProcessingWorks() throws Exception {
+  public void annotationProcessingWorks() {
     Result exitCode =
         compiler.compile(
             compiler
@@ -233,7 +224,7 @@ public class ErrorProneCompilerIntegrationTest {
 
   /** Test that if javac does dataflow on a class twice error-prone only analyses it once. */
   @Test
-  public void reportReadyForAnalysisOnce() throws Exception {
+  public void reportReadyForAnalysisOnce() {
     Result exitCode =
         compiler.compile(
             compiler
@@ -263,7 +254,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void ignoreGeneratedConstructors() throws Exception {
+  public void ignoreGeneratedConstructors() {
     compilerBuilder.report(ScannerSupplier.fromBugCheckerClasses(ConstructorMatcher.class));
     compiler = compilerBuilder.build();
     Result exitCode =
@@ -305,7 +296,7 @@ public class ErrorProneCompilerIntegrationTest {
   // TODO(cushon) - how can we distinguish between synthetic super() calls and real ones?
   @Ignore
   @Test
-  public void ignoreGeneratedSuperInvocations() throws Exception {
+  public void ignoreGeneratedSuperInvocations() {
     compilerBuilder.report(ScannerSupplier.fromBugCheckerClasses(SuperCallMatcher.class));
     compiler = compilerBuilder.build();
     Result exitCode =
@@ -326,23 +317,25 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void invalidFlagCausesCmdErrResult() throws Exception {
+  public void invalidFlagCausesCmdErrResult() {
     String[] args = {"-Xep:"};
-    Result exitCode =
-        compiler.compile(
-            args,
-            Arrays.asList(
-                compiler
-                    .fileManager()
-                    .forSourceLines(
-                        "Test.java", "public class Test {", "  public Test() {}", "}")));
-    outputStream.flush();
-
-    assertThat(outputStream.toString(), exitCode, is(Result.CMDERR));
+    assertThrows(
+        InvalidCommandLineOptionException.class,
+        () ->
+            compiler.compile(
+                args,
+                Arrays.asList(
+                    compiler
+                        .fileManager()
+                        .forSourceLines(
+                            "Test.java", //
+                            "public class Test {",
+                            "  public Test() {}",
+                            "}"))));
   }
 
   @Test
-  public void flagEnablesCheck() throws Exception {
+  public void flagEnablesCheck() {
     String[] testFile = {"public class Test {", "  public Test() {", "    if (true);", "  }", "}"};
 
     Result exitCode =
@@ -368,7 +361,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void severityIsResetOnNextCompilation() throws Exception {
+  public void severityIsResetOnNextCompilation() {
     String[] testFile = {"public class Test {", "  void doIt (int i) {", "    i = i;", "  }", "}"};
 
     String[] args = {"-Xep:SelfAssignment:WARN"};
@@ -392,7 +385,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void maturityIsResetOnNextCompilation() throws Exception {
+  public void maturityIsResetOnNextCompilation() {
     String[] testFile = {"public class Test {", "  public Test() {", "    if (true);", "  }", "}"};
 
     String[] args = {"-Xep:EmptyIf"};
@@ -417,7 +410,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void suppressGeneratedWarning() throws Exception {
+  public void suppressGeneratedWarning() {
     String[] generatedFile = {
       "@javax.annotation.Generated(\"Foo\")",
       "class Generated {",
@@ -436,7 +429,7 @@ public class ErrorProneCompilerIntegrationTest {
                   compiler.fileManager().forSourceLines("Generated.java", generatedFile)));
       outputStream.flush();
       assertThat(diagnosticHelper.getDiagnostics()).hasSize(1);
-      assertThat(diagnosticHelper.getDiagnostics().get(0).getMessage(Locale.ENGLISH))
+      assertThat(diagnosticHelper.getDiagnostics().get(0).getMessage(ENGLISH))
           .contains("[EmptyIf]");
       assertThat(outputStream.toString(), exitCode, is(Result.OK));
     }
@@ -457,7 +450,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void suppressGeneratedWarningJava9() throws Exception {
+  public void suppressGeneratedWarningJava9() {
     assumeTrue(StandardSystemProperty.JAVA_VERSION.value().startsWith("9"));
     String[] generatedFile = {
       "@javax.annotation.processing.Generated(\"Foo\")",
@@ -477,7 +470,7 @@ public class ErrorProneCompilerIntegrationTest {
                   compiler.fileManager().forSourceLines("Generated.java", generatedFile)));
       outputStream.flush();
       assertThat(diagnosticHelper.getDiagnostics()).hasSize(1);
-      assertThat(diagnosticHelper.getDiagnostics().get(0).getMessage(Locale.ENGLISH))
+      assertThat(diagnosticHelper.getDiagnostics().get(0).getMessage(ENGLISH))
           .contains("[EmptyIf]");
       assertThat(outputStream.toString(), exitCode, is(Result.OK));
     }
@@ -498,7 +491,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void cannotSuppressGeneratedError() throws Exception {
+  public void cannotSuppressGeneratedError() {
     String[] generatedFile = {
       "@javax.annotation.Generated(\"Foo\")",
       "class Generated {",
@@ -515,8 +508,7 @@ public class ErrorProneCompilerIntegrationTest {
             Arrays.asList(compiler.fileManager().forSourceLines("Generated.java", generatedFile)));
     outputStream.flush();
     assertThat(diagnosticHelper.getDiagnostics()).hasSize(1);
-    assertThat(diagnosticHelper.getDiagnostics().get(0).getMessage(Locale.ENGLISH))
-        .contains("[EmptyIf]");
+    assertThat(diagnosticHelper.getDiagnostics().get(0).getMessage(ENGLISH)).contains("[EmptyIf]");
     assertThat(outputStream.toString(), exitCode, is(Result.ERROR));
   }
 
@@ -534,7 +526,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void crashSourcePosition() throws Exception {
+  public void crashSourcePosition() {
     compiler =
         compilerBuilder.report(ScannerSupplier.fromBugCheckerClasses(CrashOnReturn.class)).build();
     Result exitCode =
@@ -557,22 +549,24 @@ public class ErrorProneCompilerIntegrationTest {
     assertThat(diag.getLineNumber()).isEqualTo(4);
     assertThat(diag.getColumnNumber()).isEqualTo(5);
     assertThat(diag.getSource().toUri().toString()).endsWith("test/Test.java");
-    assertThat(diag.getMessage(Locale.ENGLISH))
+    assertThat(diag.getMessage(ENGLISH))
         .contains("An unhandled exception was thrown by the Error Prone static analysis plugin");
   }
 
   @Test
-  public void compilePolicy_bytodo() throws Exception {
-    Result exitCode =
-        compiler.compile(
-            new String[] {"-XDcompilePolicy=bytodo"}, Collections.<JavaFileObject>emptyList());
-    outputStream.flush();
-    assertThat(exitCode).named(outputStream.toString()).isEqualTo(Result.CMDERR);
-    assertThat(outputStream.toString()).contains("-XDcompilePolicy=bytodo is not supported");
+  public void compilePolicy_bytodo() {
+    InvalidCommandLineOptionException e =
+        assertThrows(
+            InvalidCommandLineOptionException.class,
+            () ->
+                compiler.compile(
+                    new String[] {"-XDcompilePolicy=bytodo"},
+                    Collections.<JavaFileObject>emptyList()));
+    assertThat(e).hasMessageThat().contains("-XDcompilePolicy=bytodo is not supported");
   }
 
   @Test
-  public void compilePolicy_byfile() throws Exception {
+  public void compilePolicy_byfile() {
     Result exitCode =
         compiler.compile(
             new String[] {"-XDcompilePolicy=byfile"},
@@ -582,7 +576,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void compilePolicy_simple() throws Exception {
+  public void compilePolicy_simple() {
     Result exitCode =
         compiler.compile(
             new String[] {"-XDcompilePolicy=simple"},
@@ -605,7 +599,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void compilationWithError() throws Exception {
+  public void compilationWithError() {
     compilerBuilder.report(ScannerSupplier.fromBugCheckerClasses(CPSChecker.class));
     compiler = compilerBuilder.build();
     compiler.compile(
@@ -627,142 +621,6 @@ public class ErrorProneCompilerIntegrationTest {
     assertThat(output).doesNotContain("Using 'return' is considered harmful");
   }
 
-  @Test
-  public void plugin() throws Exception {
-
-    Path base = tmpFolder.newFolder().toPath();
-    Path source = base.resolve("test/Test.java");
-    Files.createDirectories(source.getParent());
-    Files.write(
-        source,
-        Arrays.asList(
-            "package test;", //
-            "public class Test {",
-            "  int f() { return 42; }",
-            "}"),
-        UTF_8);
-
-    Path jar = base.resolve("libproc.jar");
-    try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(jar))) {
-      jos.putNextEntry(new JarEntry("META-INF/services/" + BugChecker.class.getName()));
-      jos.write((CPSChecker.class.getName() + "\n").getBytes(UTF_8));
-      String classFile = CPSChecker.class.getName().replace('.', '/') + ".class";
-      jos.putNextEntry(new JarEntry(classFile));
-      ByteStreams.copy(getClass().getClassLoader().getResourceAsStream(classFile), jos);
-    }
-
-    // no plugins
-    {
-      List<String> args =
-          ImmutableList.of(
-              source.toAbsolutePath().toString(), "-processorpath", File.pathSeparator);
-      StringWriter out = new StringWriter();
-      Result result =
-          ErrorProneCompiler.compile(args.toArray(new String[0]), new PrintWriter(out, true));
-      assertThat(result).isEqualTo(Result.OK);
-    }
-    // with plugins
-    {
-      List<String> args =
-          ImmutableList.of(
-              source.toAbsolutePath().toString(),
-              "-processorpath",
-              jar.toAbsolutePath().toString());
-      StringWriter out = new StringWriter();
-      Result result =
-          ErrorProneCompiler.compile(args.toArray(new String[0]), new PrintWriter(out, true));
-      assertThat(out.toString()).contains("Using 'return' is considered harmful");
-      assertThat(result).isEqualTo(Result.ERROR);
-    }
-  }
-
-  @Test
-  public void pluginWithFlag() throws Exception {
-
-    Path base = tmpFolder.newFolder().toPath();
-    Path source = base.resolve("test/Test.java");
-    Files.createDirectories(source.getParent());
-    Files.write(
-        source,
-        Arrays.asList(
-            "package test;", //
-            "public class Test {",
-            "  int f() { return 42; }",
-            "}"),
-        UTF_8);
-
-    Path jar = base.resolve("libproc.jar");
-    try (JarOutputStream jos = new JarOutputStream(Files.newOutputStream(jar))) {
-      jos.putNextEntry(new JarEntry("META-INF/services/" + BugChecker.class.getName()));
-      jos.write((CPSChecker.class.getName() + "\n").getBytes(UTF_8));
-      String classFile = CPSChecker.class.getName().replace('.', '/') + ".class";
-      jos.putNextEntry(new JarEntry(classFile));
-      ByteStreams.copy(getClass().getClassLoader().getResourceAsStream(classFile), jos);
-    }
-
-    // Plugin jar is on classpath, disabled.
-    {
-      List<String> args =
-          ImmutableList.of(
-              source.toAbsolutePath().toString(),
-              "-processorpath",
-              jar.toAbsolutePath().toString(),
-              "-XepDisableAllChecks");
-      StringWriter out = new StringWriter();
-      Result result =
-          ErrorProneCompiler.compile(args.toArray(new String[0]), new PrintWriter(out, true));
-      assertThat(result).isEqualTo(Result.OK);
-    }
-    // Plugin is disabled by -XepDisableAllChecks and re-enabled with -Xep:CPSChecker:ERROR
-    {
-      List<String> args =
-          ImmutableList.of(
-              source.toAbsolutePath().toString(),
-              "-processorpath",
-              jar.toAbsolutePath().toString(),
-              "-XepDisableAllChecks",
-              "-Xep:CPSChecker:ERROR");
-      StringWriter out = new StringWriter();
-      Result result =
-          ErrorProneCompiler.compile(args.toArray(new String[0]), new PrintWriter(out, true));
-      assertThat(out.toString()).contains("Using 'return' is considered harmful");
-      assertThat(result).isEqualTo(Result.ERROR);
-    }
-  }
-
-  @Test
-  public void paramsFiles() throws IOException {
-    Path dir = tmpFolder.newFolder("tmp").toPath();
-    Path source = dir.resolve("Test.java");
-    Files.write(
-        source,
-        Joiner.on('\n')
-            .join(
-                ImmutableList.of(
-                    "class Test {", //
-                    "  boolean f(Integer i, String s) {",
-                    "    return i.equals(s);",
-                    "  }",
-                    "}"))
-            .getBytes(UTF_8));
-    Path params = dir.resolve("params.txt");
-    Files.write(
-        params,
-        Joiner.on(' ')
-            .join(
-                ImmutableList.of(
-                    "-Xep:EqualsIncompatibleType:ERROR",
-                    source.toAbsolutePath().toAbsolutePath().toString()))
-            .getBytes(UTF_8));
-    StringWriter output = new StringWriter();
-    Result result =
-        ErrorProneCompiler.builder()
-            .redirectOutputTo(new PrintWriter(output, true))
-            .build()
-            .run(new String[] {"@" + params.toAbsolutePath().toString()});
-    assertThat(result).isEqualTo(Result.ERROR);
-    assertThat(output.toString()).contains("[EqualsIncompatibleType]");
-  }
 
   /**
    * Trivial bug checker for testing command line flags. Forbids methods from returning the string
@@ -791,7 +649,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void checkerWithFlags() throws Exception {
+  public void checkerWithFlags() {
     String[] args = {
       "-XepOpt:Forbidden=xylophone",
     };
@@ -815,7 +673,7 @@ public class ErrorProneCompilerIntegrationTest {
   }
 
   @Test
-  public void flagsAreResetOnNextCompilation() throws Exception {
+  public void flagsAreResetOnNextCompilation() {
     String[] args = {"-XepOpt:Forbidden=bananas"};
     List<JavaFileObject> sources =
         Arrays.asList(

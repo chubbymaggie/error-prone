@@ -20,6 +20,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static com.google.errorprone.BugPattern.Category.ONE_OFF;
 import static com.google.errorprone.BugPattern.SeverityLevel.ERROR;
 import static com.google.errorprone.BugPattern.SeverityLevel.WARNING;
+import static org.junit.Assert.assertThrows;
 
 import com.google.errorprone.bugpatterns.BugChecker;
 import com.google.errorprone.bugpatterns.BugChecker.ReturnTreeMatcher;
@@ -117,7 +118,7 @@ public class CommandLineFlagTest {
   /* Tests for new-style ("-Xep:") flags */
 
   @Test
-  public void malformedFlag() throws Exception {
+  public void malformedFlag() {
     ErrorProneTestCompiler compiler = builder.build();
 
     List<String> badArgs =
@@ -126,18 +127,20 @@ public class CommandLineFlagTest {
             "-Xep:", // no check name
             "-Xep:Foo:FJDKFJSD"); // nonexistent severity level
 
-    Result exitCode;
     for (String badArg : badArgs) {
-      exitCode = compiler.compile(new String[] {badArg}, Collections.<JavaFileObject>emptyList());
-      assertThat(exitCode).isEqualTo(Result.CMDERR);
-      assertThat(output.toString()).contains("invalid flag");
+      InvalidCommandLineOptionException expected =
+          assertThrows(
+              InvalidCommandLineOptionException.class,
+              () ->
+                  compiler.compile(new String[] {badArg}, Collections.<JavaFileObject>emptyList()));
+      assertThat(expected).hasMessageThat().contains("invalid flag");
     }
   }
 
   // We have to use one of the built-in checkers for the following two tests because there is no
   // way to specify a custom checker and have it be off by default.
   @Test
-  public void canEnableWithDefaultSeverity() throws Exception {
+  public void canEnableWithDefaultSeverity() {
     ErrorProneTestCompiler compiler = builder.build();
     List<JavaFileObject> sources =
         compiler
@@ -153,7 +156,7 @@ public class CommandLineFlagTest {
   }
 
   @Test
-  public void canEnableWithOverriddenSeverity() throws Exception {
+  public void canEnableWithOverriddenSeverity() {
     ErrorProneTestCompiler compiler = builder.build();
     List<JavaFileObject> sources =
         compiler
@@ -172,7 +175,7 @@ public class CommandLineFlagTest {
   }
 
   @Test
-  public void canPromoteToError() throws Exception {
+  public void canPromoteToError() {
     ErrorProneTestCompiler compiler =
         builder.report(ScannerSupplier.fromBugCheckerClasses(WarningChecker.class)).build();
     List<JavaFileObject> sources =
@@ -187,7 +190,7 @@ public class CommandLineFlagTest {
   }
 
   @Test
-  public void canDemoteToWarning() throws Exception {
+  public void canDemoteToWarning() {
     ErrorProneTestCompiler compiler =
         builder.report(ScannerSupplier.fromBugCheckerClasses(ErrorChecker.class)).build();
     List<JavaFileObject> sources =
@@ -203,7 +206,7 @@ public class CommandLineFlagTest {
   }
 
   @Test
-  public void canDisable() throws Exception {
+  public void canDisable() {
     ErrorProneTestCompiler compiler =
         builder.report(ScannerSupplier.fromBugCheckerClasses(DisableableChecker.class)).build();
     List<JavaFileObject> sources =
@@ -219,19 +222,21 @@ public class CommandLineFlagTest {
   }
 
   @Test
-  public void cantDisableNondisableableCheck() throws Exception {
+  public void cantDisableNondisableableCheck() {
     ErrorProneTestCompiler compiler =
         builder.report(ScannerSupplier.fromBugCheckerClasses(NondisableableChecker.class)).build();
     List<JavaFileObject> sources =
         compiler.fileManager().forResources(getClass(), "CommandLineFlagTestFile.java");
 
-    Result exitCode = compiler.compile(new String[] {"-Xep:NondisableableChecker:OFF"}, sources);
-    assertThat(output.toString()).contains("NondisableableChecker may not be disabled");
-    assertThat(exitCode).isEqualTo(Result.CMDERR);
+    InvalidCommandLineOptionException expected =
+        assertThrows(
+            InvalidCommandLineOptionException.class,
+            () -> compiler.compile(new String[] {"-Xep:NondisableableChecker:OFF"}, sources));
+    assertThat(expected).hasMessageThat().contains("NondisableableChecker may not be disabled");
   }
 
   @Test
-  public void cantOverrideNonexistentCheck() throws Exception {
+  public void cantOverrideNonexistentCheck() {
     ErrorProneTestCompiler compiler = builder.build();
     List<JavaFileObject> sources =
         compiler.fileManager().forResources(getClass(), "CommandLineFlagTestFile.java");
@@ -243,26 +248,30 @@ public class CommandLineFlagTest {
             "-Xep:BogusChecker");
 
     for (String badOption : badOptions) {
-      Result exitCode = compiler.compile(new String[] {badOption}, sources);
-      assertThat(exitCode).isEqualTo(Result.CMDERR);
-      assertThat(output.toString()).contains("BogusChecker is not a valid checker name");
+      InvalidCommandLineOptionException expected =
+          assertThrows(
+              InvalidCommandLineOptionException.class,
+              () -> compiler.compile(new String[] {badOption}, sources));
+      assertThat(expected).hasMessageThat().contains("BogusChecker is not a valid checker name");
     }
   }
 
   @Test
-  public void cantOverrideByAltname() throws Exception {
+  public void cantOverrideByAltname() {
     ErrorProneTestCompiler compiler =
         builder.report(ScannerSupplier.fromBugCheckerClasses(DisableableChecker.class)).build();
     List<JavaFileObject> sources =
         compiler.fileManager().forResources(getClass(), "CommandLineFlagTestFile.java");
 
-    Result exitCode = compiler.compile(new String[] {"-Xep:foo:OFF"}, sources);
-    assertThat(exitCode).isEqualTo(Result.CMDERR);
-    assertThat(output.toString()).contains("foo is not a valid checker name");
+    InvalidCommandLineOptionException expected =
+        assertThrows(
+            InvalidCommandLineOptionException.class,
+            () -> compiler.compile(new String[] {"-Xep:foo:OFF"}, sources));
+    assertThat(expected).hasMessageThat().contains("foo is not a valid checker name");
   }
 
   @Test
-  public void ignoreUnknownChecksFlagAllowsOverridingUnknownCheck() throws Exception {
+  public void ignoreUnknownChecksFlagAllowsOverridingUnknownCheck() {
     ErrorProneTestCompiler compiler = builder.build();
     List<JavaFileObject> sources =
         compiler.fileManager().forResources(getClass(), "CommandLineFlagTestFile.java");

@@ -16,7 +16,12 @@
 
 package com.google.errorprone.matchers;
 
+import static com.google.errorprone.suppliers.Suppliers.BOOLEAN_TYPE;
+import static com.google.errorprone.suppliers.Suppliers.INT_TYPE;
+import static com.google.errorprone.suppliers.Suppliers.JAVA_LANG_BOOLEAN_TYPE;
+import static com.google.errorprone.suppliers.Suppliers.STRING_TYPE;
 import static com.google.errorprone.suppliers.Suppliers.typeFromClass;
+import static com.google.errorprone.util.ASTHelpers.getType;
 import static com.google.errorprone.util.ASTHelpers.stripParentheses;
 
 import com.google.common.collect.ImmutableList;
@@ -59,12 +64,13 @@ import com.sun.tools.javac.code.Symbol.MethodSymbol;
 import com.sun.tools.javac.code.Symbol.VarSymbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.TypeTag;
-import com.sun.tools.javac.tree.JCTree;
+import com.sun.tools.javac.processing.JavacProcessingEnvironment;
 import com.sun.tools.javac.tree.JCTree.JCCompilationUnit;
 import com.sun.tools.javac.tree.JCTree.JCExpression;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
 import com.sun.tools.javac.tree.JCTree.JCIdent;
 import java.lang.annotation.Annotation;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -74,6 +80,8 @@ import javax.lang.model.element.Element;
 import javax.lang.model.element.ElementKind;
 import javax.lang.model.element.Modifier;
 import javax.lang.model.element.NestingKind;
+import javax.lang.model.element.TypeElement;
+import javax.lang.model.type.TypeMirror;
 
 /**
  * Static factory methods which make the DSL read more fluently. Since matchers are run in a tight
@@ -83,6 +91,7 @@ import javax.lang.model.element.NestingKind;
  * @author alexeagle@google.com (Alex Eagle)
  */
 public class Matchers {
+
   private Matchers() {}
 
   /** A matcher that matches any AST node. */
@@ -334,7 +343,6 @@ public class Matchers {
     return new ConstructorOfClass(matchType, constructorMatcher);
   }
 
-  // TODO(cushon): expunge
   public static Matcher<MethodInvocationTree> methodSelect(
       Matcher<ExpressionTree> methodSelectMatcher) {
     return new MethodInvocationMethodSelect(methodSelectMatcher);
@@ -450,7 +458,8 @@ public class Matchers {
     return new Matcher<T>() {
       @Override
       public boolean matches(Tree t, VisitorState state) {
-        return state.getTypes().isArray(((JCTree) t).type);
+        Type type = getType(t);
+        return type != null && state.getTypes().isArray(type);
       }
     };
   }
@@ -460,8 +469,10 @@ public class Matchers {
     return new Matcher<T>() {
       @Override
       public boolean matches(Tree t, VisitorState state) {
-        Type type = ((JCTree) t).type;
-        return state.getTypes().isArray(type) && state.getTypes().elemtype(type).isPrimitive();
+        Type type = getType(t);
+        return type != null
+            && state.getTypes().isArray(type)
+            && state.getTypes().elemtype(type).isPrimitive();
       }
     };
   }
@@ -471,7 +482,8 @@ public class Matchers {
     return new Matcher<T>() {
       @Override
       public boolean matches(Tree t, VisitorState state) {
-        return ((JCTree) t).type.isPrimitive();
+        Type type = getType(t);
+        return type != null && type.isPrimitive();
       }
     };
   }
@@ -481,7 +493,8 @@ public class Matchers {
     return new Matcher<T>() {
       @Override
       public boolean matches(T t, VisitorState state) {
-        return ((JCTree) t).type.isPrimitiveOrVoid();
+        Type type = getType(t);
+        return type != null && type.isPrimitiveOrVoid();
       }
     };
   }
@@ -491,7 +504,8 @@ public class Matchers {
     return new Matcher<T>() {
       @Override
       public boolean matches(T t, VisitorState state) {
-        return state.getTypes().isSameType(((JCTree) t).type, state.getSymtab().voidType);
+        Type type = getType(t);
+        return type != null && state.getTypes().isSameType(type, state.getSymtab().voidType);
       }
     };
   }
@@ -503,7 +517,8 @@ public class Matchers {
     return new Matcher<T>() {
       @Override
       public boolean matches(Tree t, VisitorState state) {
-        return state.getTypes().unboxedTypeOrType(((JCTree) t).type).isPrimitive();
+        Type type = getType(t);
+        return type != null && state.getTypes().unboxedTypeOrType(type).isPrimitive();
       }
     };
   }
@@ -751,6 +766,28 @@ public class Matchers {
   }
 
   /**
+   * Determines if an expression has an annotation referred to by the given mirror. Accounts for
+   * binary names and annotations inherited due to @Inherited.
+   *
+   * @param annotationMirror mirror referring to the annotation type
+   */
+  public static Matcher<Tree> hasAnnotation(TypeMirror annotationMirror) {
+    return new Matcher<Tree>() {
+      @Override
+      public boolean matches(Tree tree, VisitorState state) {
+        JavacProcessingEnvironment javacEnv = JavacProcessingEnvironment.instance(state.context);
+        TypeElement typeElem = (TypeElement) javacEnv.getTypeUtils().asElement(annotationMirror);
+        String name = annotationMirror.toString();
+        if (typeElem != null) {
+          // Get the binary name if possible ($ to separate nested members). See b/36160747
+          name = javacEnv.getElementUtils().getBinaryName(typeElem).toString();
+        }
+        return ASTHelpers.hasAnnotation(ASTHelpers.getDeclaredSymbol(tree), name, state);
+      }
+    };
+  }
+
+  /**
    * Determines whether an expression has an annotation with the given simple name. This does not
    * include annotations inherited from superclasses due to @Inherited.
    *
@@ -880,7 +917,6 @@ public class Matchers {
    *
    * @param methodName The name of the method to match, e.g., "equals"
    */
-  // TODO(cushon): expunge
   public static Matcher<MethodTree> methodIsNamed(final String methodName) {
     return new Matcher<MethodTree>() {
       @Override
@@ -1095,7 +1131,9 @@ public class Matchers {
    *     "java.util.Map"
    * @param methodName The name of the method to match, including arguments, e.g.,
    *     "get(java.lang.Object)"
+   * @deprecated prefer {@link MethodMatchers#instanceMethod}
    */
+  @Deprecated
   // TODO(cushon): expunge
   public static Matcher<ExpressionTree> isDescendantOfMethod(
       String fullClassName, String methodName) {
@@ -1424,6 +1462,22 @@ public class Matchers {
     return new IsDirectImplementationOf(isProvidedType);
   }
 
+  public static Matcher<Tree> hasAnyAnnotation(Class<? extends Annotation>... annotations) {
+    ArrayList<Matcher<Tree>> matchers = new ArrayList<>(annotations.length);
+    for (Class<? extends Annotation> annotation : annotations) {
+      matchers.add(hasAnnotation(annotation));
+    }
+    return anyOf(matchers);
+  }
+
+  public static Matcher<Tree> hasAnyAnnotation(List<? extends TypeMirror> mirrors) {
+    ArrayList<Matcher<Tree>> matchers = new ArrayList<>(mirrors.size());
+    for (TypeMirror mirror : mirrors) {
+      matchers.add(hasAnnotation(mirror));
+    }
+    return anyOf(matchers);
+  }
+
   private static class IsDirectImplementationOf extends ChildMultiMatcher<ClassTree, Tree> {
     public IsDirectImplementationOf(Matcher<Tree> classMatcher) {
       super(MatchType.AT_LEAST_ONE, classMatcher);
@@ -1449,5 +1503,109 @@ public class Matchers {
   private static String getPackageFullName(VisitorState state) {
     JCCompilationUnit compilationUnit = (JCCompilationUnit) state.getPath().getCompilationUnit();
     return compilationUnit.packge.fullname.toString();
+  }
+
+  private static final Matcher<MethodInvocationTree> STATIC_EQUALS =
+      anyOf(
+          allOf(
+              staticMethod()
+                  .onClass("android.support.v4.util.ObjectsCompat")
+                  .named("equals")
+                  .withParameters("java.lang.Object", "java.lang.Object"),
+              isSameType(BOOLEAN_TYPE)),
+          allOf(
+              staticMethod()
+                  .onClass("java.util.Objects")
+                  .named("equals")
+                  .withParameters("java.lang.Object", "java.lang.Object"),
+              isSameType(BOOLEAN_TYPE)),
+          allOf(
+              staticMethod()
+                  .onClass("com.google.common.base.Objects")
+                  .named("equal")
+                  .withParameters("java.lang.Object", "java.lang.Object"),
+              isSameType(BOOLEAN_TYPE)));
+
+  /**
+   * Matches an invocation of a recognized static object equality method such as {@link
+   * java.util.Objects#equals}. These are simple facades to {@link Object#equals} that accept null
+   * for either argument.
+   */
+  public static Matcher<MethodInvocationTree> staticEqualsInvocation() {
+    return STATIC_EQUALS;
+  }
+
+  private static final Matcher<ExpressionTree> INSTANCE_EQUALS =
+      allOf(
+          instanceMethod().anyClass().named("equals").withParameters("java.lang.Object"),
+          isSameType(BOOLEAN_TYPE));
+
+  /** Matches calls to the method {@link Object#equals(Object)} or any override of that method. */
+  public static Matcher<ExpressionTree> instanceEqualsInvocation() {
+    return INSTANCE_EQUALS;
+  }
+
+  private static final Matcher<ExpressionTree> ASSERT_EQUALS =
+      anyOf(
+          staticMethod().onClass("org.junit.Assert").named("assertEquals"),
+          staticMethod().onClass("junit.framework.Assert").named("assertEquals"),
+          staticMethod().onClass("junit.framework.TestCase").named("assertEquals"));
+
+  /**
+   * Matches calls to the method {@code org.junit.Assert#assertEquals} and corresponding methods in
+   * JUnit 3.x.
+   */
+  public static Matcher<ExpressionTree> assertEqualsInvocation() {
+    return ASSERT_EQUALS;
+  }
+
+  private static final Matcher<ExpressionTree> ASSERT_NOT_EQUALS =
+      anyOf(
+          staticMethod().onClass("org.junit.Assert").named("assertNotEquals"),
+          staticMethod().onClass("junit.framework.Assert").named("assertNotEquals"),
+          staticMethod().onClass("junit.framework.TestCase").named("assertNotEquals"));
+
+  /**
+   * Matches calls to the method {@code org.junit.Assert#assertNotEquals} and corresponding methods
+   * in JUnit 3.x.
+   */
+  public static Matcher<ExpressionTree> assertNotEqualsInvocation() {
+    return ASSERT_NOT_EQUALS;
+  }
+
+  private static final Matcher<MethodTree> EQUALS_DECLARATION =
+      allOf(
+          methodIsNamed("equals"),
+          methodHasVisibility(Visibility.PUBLIC),
+          methodHasParameters(variableType(isSameType("java.lang.Object"))),
+          anyOf(methodReturns(BOOLEAN_TYPE), methodReturns(JAVA_LANG_BOOLEAN_TYPE)));
+
+  /** Matches {@link Object#equals} method declaration. */
+  public static Matcher<MethodTree> equalsMethodDeclaration() {
+    return EQUALS_DECLARATION;
+  }
+
+  private static final Matcher<MethodTree> TO_STRING_DECLARATION =
+      allOf(
+          methodIsNamed("toString"),
+          methodHasVisibility(Visibility.PUBLIC),
+          methodHasParameters(),
+          methodReturns(STRING_TYPE));
+
+  /** Matches {@link Object#toString} method declaration. */
+  public static Matcher<MethodTree> toStringMethodDeclaration() {
+    return TO_STRING_DECLARATION;
+  }
+
+  private static final Matcher<MethodTree> HASH_CODE_DECLARATION =
+      allOf(
+          methodIsNamed("hashCode"),
+          methodHasVisibility(Visibility.PUBLIC),
+          methodHasParameters(),
+          methodReturns(INT_TYPE));
+
+  /** Matches {@code hashCode} method declaration. */
+  public static Matcher<MethodTree> hashCodeMethodDeclaration() {
+    return HASH_CODE_DECLARATION;
   }
 }

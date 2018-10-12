@@ -33,11 +33,13 @@ import com.sun.tools.javac.api.JavacTool;
 import com.sun.tools.javac.main.Main.Result;
 import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
-import java.io.IOError;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -61,7 +63,7 @@ public class CompilationTestHelper {
           "-XDcompilePolicy=simple");
 
   private final DiagnosticTestHelper diagnosticHelper;
-  private final BaseErrorProneCompiler compiler;
+  private final BaseErrorProneJavaCompiler compiler;
   private final ByteArrayOutputStream outputStream;
   private final ErrorProneInMemoryFileManager fileManager;
   private final List<JavaFileObject> sources = new ArrayList<>();
@@ -77,19 +79,11 @@ public class CompilationTestHelper {
     try {
       fileManager.setLocation(StandardLocation.SOURCE_PATH, Collections.emptyList());
     } catch (IOException e) {
-      e.printStackTrace();
+      throw new UncheckedIOException(e);
     }
     this.diagnosticHelper = new DiagnosticTestHelper(checkName);
     this.outputStream = new ByteArrayOutputStream();
-    this.compiler =
-        BaseErrorProneCompiler.builder()
-            .report(scannerSupplier)
-            .redirectOutputTo(
-                new PrintWriter(
-                    new BufferedWriter(new OutputStreamWriter(outputStream, UTF_8)),
-                    /*autoFlush=*/ true))
-            .listenToDiagnostics(diagnosticHelper.collector)
-            .build();
+    this.compiler = new BaseErrorProneJavaCompiler(JavacTool.create(), scannerSupplier);
   }
 
   /**
@@ -273,7 +267,7 @@ public class CompilationTestHelper {
           diagnosticHelper.assertHasDiagnosticOnAllMatchingLines(
               source, lookForCheckNameInDiagnostic);
         } catch (IOException e) {
-          throw new IOError(e);
+          throw new UncheckedIOException(e);
         }
       }
       assertTrue(
@@ -298,10 +292,46 @@ public class CompilationTestHelper {
     if (checkWellFormed) {
       checkWellFormed(sources, args);
     }
-    return compiler.run(args, fileManager, ImmutableList.copyOf(sources), null);
+    createAndInstallTempFolderForOutput(fileManager);
+    return compiler
+            .getTask(
+                new PrintWriter(
+                    new BufferedWriter(new OutputStreamWriter(outputStream, UTF_8)),
+                    /*autoFlush=*/ true),
+                fileManager,
+                diagnosticHelper.collector,
+                /* options= */ ImmutableList.copyOf(args),
+                /* classes= */ ImmutableList.of(),
+                sources)
+            .call()
+        ? Result.OK
+        : Result.ERROR;
+  }
+
+  private static void createAndInstallTempFolderForOutput(
+      ErrorProneInMemoryFileManager fileManager) {
+    Path tempDirectory;
+    try {
+      tempDirectory =
+          Files.createTempDirectory(
+              fileManager.fileSystem().getRootDirectories().iterator().next(), "");
+    } catch (IOException e) {
+      throw new UncheckedIOException(e);
+    }
+    Arrays.stream(StandardLocation.values())
+        .filter(StandardLocation::isOutputLocation)
+        .forEach(
+            outputLocation -> {
+              try {
+                fileManager.setLocationFromPaths(outputLocation, ImmutableList.of(tempDirectory));
+              } catch (IOException e) {
+                throw new UncheckedIOException(e);
+              }
+            });
   }
 
   private void checkWellFormed(Iterable<JavaFileObject> sources, String[] args) {
+    createAndInstallTempFolderForOutput(fileManager);
     JavaCompiler compiler = JavacTool.create();
     OutputStream outputStream = new ByteArrayOutputStream();
     String[] remainingArgs = null;

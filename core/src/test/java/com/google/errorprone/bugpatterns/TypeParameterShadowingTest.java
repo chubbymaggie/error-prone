@@ -17,6 +17,7 @@
 package com.google.errorprone.bugpatterns;
 
 import com.google.errorprone.BugCheckerRefactoringTestHelper;
+import com.google.errorprone.BugCheckerRefactoringTestHelper.TestMode;
 import com.google.errorprone.CompilationTestHelper;
 import org.junit.Before;
 import org.junit.Test;
@@ -38,7 +39,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void singleLevel() throws Exception {
+  public void singleLevel() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -51,7 +52,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void staticNotFlagged() throws Exception {
+  public void staticNotFlagged() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -63,7 +64,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void staticMethodInnerDoesntConflictWithOuter() throws Exception {
+  public void staticMethodInnerDoesntConflictWithOuter() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -82,7 +83,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void nestedClassDeclarations() throws Exception {
+  public void nestedClassDeclarations() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -95,7 +96,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void twoLevels() throws Exception {
+  public void twoLevels() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -112,25 +113,27 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void renameTypeVar() throws Exception {
+  public void renameTypeVar() {
     refactoring
         .addInputLines(
             "in/Test.java",
             "package foo.bar;",
             "class Test<T> {",
+            "  /** @param <T> foo */",
             "  <T> void something(T t) { T other = t;}",
             "}")
         .addOutputLines(
             "out/Test.java",
             "package foo.bar;",
             "class Test<T> {",
+            "  /** @param <T2> foo */",
             "  <T2> void something(T2 t) { T2 other = t;}",
             "}")
-        .doTest();
+        .doTest(TestMode.TEXT_MATCH);
   }
 
   @Test
-  public void renameRecursiveBound() throws Exception {
+  public void renameRecursiveBound() {
     refactoring
         .addInputLines(
             "in/Test.java",
@@ -148,7 +151,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void refactorUnderneathStuff() throws Exception {
+  public void refactorUnderneathStuff() {
     refactoring
         .addInputLines(
             "in/Test.java",
@@ -168,7 +171,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void refactorMultipleVars() throws Exception {
+  public void refactorMultipleVars() {
     refactoring
         .addInputLines(
             "in/Test.java",
@@ -194,7 +197,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void refactorWithNestedTypeParameterDeclaration() throws Exception {
+  public void refactorWithNestedTypeParameterDeclaration() {
     // The nested @SuppressWarnings are because there will be multiple findings
     // (T is shadowed multiple times). We're trying to test all of the fixes suggested by the
     // finding generated from the outermost instance method, namely that it doesn't attempt to
@@ -238,7 +241,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void refactorCheckForExisting() throws Exception {
+  public void refactorCheckForExisting() {
     refactoring
         .addInputLines(
             "in/Test.java",
@@ -264,7 +267,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void refactorMethodInnerInner() throws Exception {
+  public void refactorMethodInnerInner() {
     refactoring
         .addInputLines(
             "in/Test.java",
@@ -315,7 +318,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void lambdaParameterDesugaring() throws Exception {
+  public void lambdaParameterDesugaring() {
     refactoring
         .addInputLines(
             "in/A.java",
@@ -343,7 +346,7 @@ public class TypeParameterShadowingTest {
   }
 
   @Test
-  public void typesWithBounds() throws Exception {
+  public void typesWithBounds() {
     refactoring
         .addInputLines(
             "in/Test.java",

@@ -25,7 +25,14 @@ import org.junit.runners.JUnit4;
 @RunWith(JUnit4.class)
 public class MissingSuperCallTest {
   private final CompilationTestHelper compilationHelper =
-      CompilationTestHelper.newInstance(MissingSuperCall.class, getClass());
+      CompilationTestHelper.newInstance(MissingSuperCall.class, getClass())
+          .addSourceLines(
+              "android/support/annotation/CallSuper.java",
+              "package android.support.annotation;",
+              "import static java.lang.annotation.ElementType.METHOD;",
+              "import java.lang.annotation.Target;",
+              "@Target({METHOD})",
+              "public @interface CallSuper {}");
 
   @Test
   public void android() {
@@ -318,6 +325,33 @@ public class MissingSuperCallTest {
             "  // but does not call the super method",
             "  @Override public void doIt() {",
             "    super.wrongToCall();",
+            "  }",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void nestedSuperCall() {
+    compilationHelper
+        .addSourceLines(
+            "Super.java",
+            "import android.support.annotation.CallSuper;",
+            "public class Super {",
+            "  @CallSuper public void doIt() {}",
+            "  public void wrongToCall() {}",
+            "}")
+        .addSourceLines(
+            "Sub.java",
+            "public class Sub extends Super {",
+            "  // BUG: Diagnostic contains:",
+            "  // This method overrides Super#doIt, which is annotated with @CallSuper,",
+            "  // but does not call the super method",
+            "  @Override public void doIt() {",
+            "    new Super() {",
+            "      @Override public void doIt() {",
+            "        super.doIt();",
+            "      }",
+            "    };",
             "  }",
             "}")
         .doTest();

@@ -49,8 +49,7 @@ public class ThreeLetterTimeZoneIDTest {
     // IDs in TimeZone.getAvailableIDs() that aren't in ZoneId.getAvailableZoneIds(). Sanity check.
     Set<String> availableZoneIds = new HashSet<>(ZoneId.getAvailableZoneIds());
     Set<String> expectedIds =
-        Arrays.asList(TimeZone.getAvailableIDs())
-            .stream()
+        Arrays.asList(TimeZone.getAvailableIDs()).stream()
             .filter(s -> s.length() == 3)
             .filter(s -> !availableZoneIds.contains(s))
             .collect(Collectors.toSet());
@@ -74,7 +73,7 @@ public class ThreeLetterTimeZoneIDTest {
   }
 
   @Test
-  public void testPositiveCase() throws Exception {
+  public void testPositiveCase() {
     compilationHelper
         .addSourceLines(
             "a/A.java",
@@ -98,7 +97,7 @@ public class ThreeLetterTimeZoneIDTest {
   }
 
   @Test
-  public void testPositiveCaseJodaTime() throws Exception {
+  public void testPositiveCaseJodaTime() {
     compilationHelper
         .addSourceLines(
             "a/A.java",
@@ -128,7 +127,7 @@ public class ThreeLetterTimeZoneIDTest {
   }
 
   @Test
-  public void testNegativeCase() throws Exception {
+  public void testNegativeCase() {
     compilationHelper
         .addSourceLines(
             "a/A.java",

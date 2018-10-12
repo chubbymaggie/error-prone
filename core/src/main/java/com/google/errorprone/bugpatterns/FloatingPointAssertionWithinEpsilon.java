@@ -35,14 +35,12 @@ import com.google.errorprone.matchers.Matcher;
 import com.google.errorprone.matchers.Matchers;
 import com.google.errorprone.matchers.method.MethodMatchers.MethodNameMatcher;
 import com.google.errorprone.util.ASTHelpers;
-import com.sun.source.tree.BinaryTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MethodInvocationTree;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.TypeTag;
 import java.util.Optional;
-import java.util.regex.Pattern;
 
 /**
  * Detects usages of {@code Float,DoubleSubject.isWithin(TOLERANCE).of(EXPECTED)} where there are no
@@ -95,8 +93,10 @@ public final class FloatingPointAssertionWithinEpsilon extends BugChecker
       }
 
       @Override
-      String suffixLiteralIfNecessary(String literal) {
-        return literal + "f";
+      Optional<String> suffixLiteralIfPossible(LiteralTree literal, VisitorState state) {
+        // If the value passed to #of was being converted to a float, we can make that explicit with
+        // an "f" qualifier.
+        return Optional.of(removeSuffixes(state.getSourceForNode(literal)) + "f");
       }
     },
     DOUBLE(
@@ -116,11 +116,20 @@ public final class FloatingPointAssertionWithinEpsilon extends BugChecker
       }
 
       @Override
-      String suffixLiteralIfNecessary(String literal) {
-        if (literal.contains(".")) {
-          return literal;
+      Optional<String> suffixLiteralIfPossible(LiteralTree literal, VisitorState state) {
+        String literalString = removeSuffixes(state.getSourceForNode(literal));
+        double asDouble;
+        try {
+          asDouble = Double.parseDouble(literalString);
+        } catch (NumberFormatException nfe) {
+          return Optional.empty();
         }
-        return literal + "d";
+        // We need to double-check that the value with a "d" suffix has the same value. For example,
+        // 0.1f != 0.1d, so must be replaced with (double) 0.1f
+        if (asDouble == ASTHelpers.constValue(literal, Number.class).doubleValue()) {
+          return Optional.of(literalString.contains(".") ? literalString : literalString + "d");
+        }
+        return Optional.empty();
       }
     };
 
@@ -141,7 +150,7 @@ public final class FloatingPointAssertionWithinEpsilon extends BugChecker
               Matchers.receiverOfInvocation(
                   instanceMethod()
                       .onDescendantOf(subjectClass)
-                      .withNameMatching(Pattern.compile("is(Not)?Within"))
+                      .namedAnyOf("isWithin", "isNotWithin")
                       .withParameters(typeName)));
       MethodNameMatcher junitAssert =
           staticMethod().onClass("org.junit.Assert").named("assertEquals");
@@ -154,7 +163,7 @@ public final class FloatingPointAssertionWithinEpsilon extends BugChecker
 
     abstract boolean isIntolerantComparison(Number tolerance, Number actual);
 
-    abstract String suffixLiteralIfNecessary(String literal);
+    abstract Optional<String> suffixLiteralIfPossible(LiteralTree literal, VisitorState state);
 
     private Optional<Description> match(
         BugChecker bugChecker, MethodInvocationTree tree, VisitorState state) {
@@ -242,16 +251,19 @@ public final class FloatingPointAssertionWithinEpsilon extends BugChecker
         return source;
       }
       if (tree instanceof LiteralTree) {
-        return suffixLiteralIfNecessary(source.replaceAll("[fFdDlL]$", ""));
+        Optional<String> suffixed = suffixLiteralIfPossible((LiteralTree) tree, state);
+        if (suffixed.isPresent()) {
+          return suffixed.get();
+        }
       }
-      if (parenthesize(tree)) {
+      if (ASTHelpers.requiresParentheses(tree, state)) {
         return String.format("(%s) (%s)", typeName, source);
       }
       return String.format("(%s) %s", typeName, source);
     }
 
-    private static boolean parenthesize(ExpressionTree tree) {
-      return tree instanceof BinaryTree;
+    static String removeSuffixes(String source) {
+      return source.replaceAll("[fFdDlL]$", "");
     }
   }
 }

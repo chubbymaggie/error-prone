@@ -19,8 +19,6 @@ package com.google.errorprone.bugpatterns;
 import static com.google.common.base.Preconditions.checkState;
 import static com.google.errorprone.BugPattern.Category.JDK;
 import static com.google.errorprone.BugPattern.SeverityLevel.WARNING;
-import static com.google.errorprone.matchers.Matchers.anyOf;
-import static com.google.errorprone.matchers.Matchers.hasAnnotation;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
@@ -31,9 +29,9 @@ import com.google.errorprone.bugpatterns.BugChecker.MethodTreeMatcher;
 import com.google.errorprone.fixes.SuggestedFix;
 import com.google.errorprone.fixes.SuggestedFixes;
 import com.google.errorprone.matchers.Description;
+import com.google.errorprone.matchers.InjectMatchers;
 import com.google.errorprone.matchers.Matcher;
 import com.google.errorprone.util.ASTHelpers;
-import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.ParameterizedTypeTree;
@@ -41,13 +39,11 @@ import com.sun.source.tree.ReturnTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.util.SimpleTreeVisitor;
 import com.sun.source.util.TreeScanner;
-import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Symbol.MethodSymbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Type.ClassType;
 import java.util.Optional;
 import java.util.function.Predicate;
-import javax.lang.model.element.Modifier;
 
 /** @author dorir@google.com (Dori Reuveni) */
 @BugPattern(
@@ -61,7 +57,7 @@ import javax.lang.model.element.Modifier;
 public final class MutableMethodReturnType extends BugChecker implements MethodTreeMatcher {
 
   private static final Matcher<MethodTree> ANNOTATED_WITH_PRODUCES_OR_PROVIDES =
-      anyOf(hasAnnotation("dagger.Provides"), hasAnnotation("dagger.producers.Produces"));
+      InjectMatchers.hasProvidesAnnotation();
 
   @Override
   public Description matchMethod(MethodTree methodTree, VisitorState state) {
@@ -71,7 +67,7 @@ public final class MutableMethodReturnType extends BugChecker implements MethodT
       return Description.NO_MATCH;
     }
 
-    if (isMethodCanBeOverridden(methodSymbol, state)) {
+    if (ASTHelpers.methodCanBeOverridden(methodSymbol)) {
       return Description.NO_MATCH;
     }
 
@@ -114,28 +110,6 @@ public final class MutableMethodReturnType extends BugChecker implements MethodT
     return describeMatch(methodTree.getReturnType(), fix);
   }
 
-  private static boolean isMethodCanBeOverridden(MethodSymbol methodSymbol, VisitorState state) {
-    if (methodSymbol.isStatic() || methodSymbol.isPrivate() || isFinalMethod(methodSymbol)) {
-      return false;
-    }
-
-    ClassTree enclosingClassTree = ASTHelpers.findEnclosingNode(state.getPath(), ClassTree.class);
-    boolean isEnclosingClassFinal = isFinalClass(enclosingClassTree);
-    if (isEnclosingClassFinal) {
-      return false;
-    }
-
-    return true;
-  }
-
-  private static boolean isFinalClass(ClassTree classTree) {
-    return classTree.getModifiers().getFlags().contains(Modifier.FINAL);
-  }
-
-  private static boolean isFinalMethod(MethodSymbol methodSymbol) {
-    return (methodSymbol.flags() & Flags.FINAL) == Flags.FINAL;
-  }
-
   private static Optional<String> getCommonImmutableTypeForAllReturnStatementsTypes(
       ImmutableSet<ClassType> returnStatementsTypes) {
     checkState(!returnStatementsTypes.isEmpty());
@@ -143,8 +117,7 @@ public final class MutableMethodReturnType extends BugChecker implements MethodT
     ClassType arbitraryClassType = returnStatementsTypes.asList().get(0);
     ImmutableList<String> superTypes = getImmutableSuperTypesForClassType(arbitraryClassType);
 
-    return superTypes
-        .stream()
+    return superTypes.stream()
         .filter(areAllReturnStatementsAssignable(returnStatementsTypes))
         .findFirst();
   }
@@ -152,8 +125,7 @@ public final class MutableMethodReturnType extends BugChecker implements MethodT
   private static Predicate<String> areAllReturnStatementsAssignable(
       ImmutableSet<ClassType> returnStatementsTypes) {
     return s ->
-        returnStatementsTypes
-            .stream()
+        returnStatementsTypes.stream()
             .map(MutableMethodReturnType::getImmutableSuperTypesForClassType)
             .allMatch(c -> c.contains(s));
   }

@@ -67,6 +67,7 @@ public class StrictFormatStringValidation {
     // so don't bother with annotations and just check if the parameters match the format string.
     if (formatStringValues != null) {
       return FormatStringValidation.validate(
+          /* formatMethodSymbol= */ null,
           ImmutableList.<ExpressionTree>builder().add(formatStringTree).addAll(args).build(),
           state);
     }
@@ -78,7 +79,7 @@ public class StrictFormatStringValidation {
       return ValidationResult.create(
           null,
           String.format(
-              "Format strings must be either a literal or a variable. Other expressions"
+              "Format strings must be either literals or variables. Other expressions"
                   + " are not valid.\n"
                   + "Invalid format string: %s",
               formatStringTree));
@@ -90,7 +91,7 @@ public class StrictFormatStringValidation {
     }
 
     if (formatStringSymbol.getKind() == ElementKind.PARAMETER) {
-      return validateFormatStringParamter(formatStringTree, formatStringSymbol, args, state);
+      return validateFormatStringParameter(formatStringTree, formatStringSymbol, args, state);
     } else {
       // The format string is final but not a method parameter or compile time constant. Ensure that
       // it is only assigned to compile time constant values and ensure that any possible assignment
@@ -100,7 +101,7 @@ public class StrictFormatStringValidation {
   }
 
   /** Helps {@code validate()} validate a format string that is declared as a method parameter. */
-  private static ValidationResult validateFormatStringParamter(
+  private static ValidationResult validateFormatStringParameter(
       ExpressionTree formatStringTree,
       Symbol formatStringSymbol,
       List<? extends ExpressionTree> args,
@@ -109,7 +110,7 @@ public class StrictFormatStringValidation {
       return ValidationResult.create(
           null,
           String.format(
-              "Format strings must be compile time constant or parameters annotated "
+              "Format strings must be compile time constants or parameters annotated "
                   + "@FormatString: %s",
               formatStringTree));
     }
@@ -175,7 +176,7 @@ public class StrictFormatStringValidation {
           null,
           String.format(
               "Variables used as format strings that are not local variables must be compile time"
-                  + " consant.\n%s is not a local variable and is not compile time constant.",
+                  + " constants.\n%s is neither a local variable nor a compile time constant.",
               formatStringTree));
     }
 
@@ -247,7 +248,9 @@ public class StrictFormatStringValidation {
               formatStringAssignment));
     } else {
       return FormatStringValidation.validate(
-          ImmutableList.<ExpressionTree>builder().add(formatStringRhs).addAll(args).build(), state);
+          /* formatMethodSymbol= */ null,
+          ImmutableList.<ExpressionTree>builder().add(formatStringRhs).addAll(args).build(),
+          state);
     }
   }
 

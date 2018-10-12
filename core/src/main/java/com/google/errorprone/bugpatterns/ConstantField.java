@@ -24,8 +24,10 @@ import com.google.errorprone.BugPattern;
 import com.google.errorprone.BugPattern.ProvidesFix;
 import com.google.errorprone.VisitorState;
 import com.google.errorprone.bugpatterns.BugChecker.VariableTreeMatcher;
+import com.google.errorprone.fixes.SuggestedFix;
 import com.google.errorprone.fixes.SuggestedFixes;
 import com.google.errorprone.matchers.Description;
+import com.google.errorprone.names.NamingConventions;
 import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.VariableTree;
 import com.sun.tools.javac.code.Symbol;
@@ -63,14 +65,25 @@ public class ConstantField extends BugChecker implements VariableTreeMatcher {
       return Description.NO_MATCH;
     }
 
-    Description.Builder fixBuilder = buildDescription(tree);
+    Description.Builder descriptionBuilder = buildDescription(tree);
     if (canBecomeStaticMember(sym)) {
-      fixBuilder.addFix(SuggestedFixes.addModifiers(tree, state, Modifier.FINAL, Modifier.STATIC));
+      descriptionBuilder.addFix(
+          SuggestedFixes.addModifiers(tree, state, Modifier.FINAL, Modifier.STATIC)
+              .map(
+                  f ->
+                      SuggestedFix.builder()
+                          .setShortDescription("make static and final")
+                          .merge(f)
+                          .build()));
     }
-    return fixBuilder
+    return descriptionBuilder
         .addFix(
-            SuggestedFixes.renameVariable(
-                tree, CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, name), state))
+            SuggestedFix.builder()
+                .setShortDescription("change to camelcase")
+                .merge(
+                    SuggestedFixes.renameVariable(
+                        tree, CaseFormat.UPPER_UNDERSCORE.to(CaseFormat.LOWER_CAMEL, name), state))
+                .build())
         .build();
   }
 
@@ -93,7 +106,7 @@ public class ConstantField extends BugChecker implements VariableTreeMatcher {
   }
 
   private Description checkImmutable(
-      VariableTree tree, VisitorState state, Symbol.VarSymbol sym, String name) {
+      VariableTree tree, VisitorState state, VarSymbol sym, String name) {
     Type type = sym.type;
     if (type == null) {
       return Description.NO_MATCH;
@@ -111,10 +124,7 @@ public class ConstantField extends BugChecker implements VariableTreeMatcher {
     if (state.getTypes().unboxedTypeOrType(type).isPrimitive()
         || ASTHelpers.isSameType(type, state.getSymtab().stringType, state)
         || type.tsym.getKind() == ElementKind.ENUM) {
-      String constName = CaseFormat.LOWER_CAMEL.to(CaseFormat.UPPER_UNDERSCORE, name);
-      if (constName.startsWith("K_")) {
-        constName = constName.substring("K_".length());
-      }
+      String constName = upperCaseReplace(name);
       return buildDescription(tree)
           .setMessage(
               String.format(
@@ -124,5 +134,20 @@ public class ConstantField extends BugChecker implements VariableTreeMatcher {
           .build();
     }
     return Description.NO_MATCH;
+  }
+
+  private static String upperCaseReplace(String name) {
+    String constName;
+    if (name.contains("_")) {
+      constName = name.toUpperCase();
+    } else {
+      constName = NamingConventions.convertToLowerUnderscore(name).toUpperCase();
+    }
+
+    // C++-style constants like kFooBar should become FOO_BAR, not K_FOO_BAR
+    if (constName.startsWith("K_")) {
+      constName = constName.substring("K_".length());
+    }
+    return constName;
   }
 }

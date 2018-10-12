@@ -111,7 +111,7 @@ public final class FindIdentifiers {
    * appears first in iteration order is the one you get if you use the bare name in the source
    * code.
    *
-   * <p>We do not report variables that would require a qualfied access. We also do not handle
+   * <p>We do not report variables that would require a qualified access. We also do not handle
    * wildcard imports.
    */
   public static LinkedHashSet<VarSymbol> findAllIdents(VisitorState state) {
@@ -224,9 +224,7 @@ public final class FindIdentifiers {
     }
 
     // TODO(eaftan): switch out collector for ImmutableSet.toImmutableSet()
-    return result
-        .build()
-        .stream()
+    return result.build().stream()
         .filter(var -> isVisible(var, state.getPath()))
         .collect(Collectors.toCollection(LinkedHashSet::new));
   }
@@ -279,10 +277,7 @@ public final class FindIdentifiers {
   /** Finds all the visible fields declared or inherited in the target class */
   public static List<VarSymbol> findAllFields(Type classType, VisitorState state) {
     // TODO(andrewrice): Switch collector to ImmutableList.toImmutableList() when released
-    return state
-        .getTypes()
-        .closure(classType)
-        .stream()
+    return state.getTypes().closure(classType).stream()
         .flatMap(
             type -> {
               TypeSymbol tsym = type.tsym;
@@ -293,8 +288,7 @@ public final class FindIdentifiers {
               if (scope == null) {
                 return ImmutableList.<VarSymbol>of().stream();
               }
-              return ImmutableList.copyOf(scope.getSymbols(VarSymbol.class::isInstance))
-                  .reverse()
+              return ImmutableList.copyOf(scope.getSymbols(VarSymbol.class::isInstance)).reverse()
                   .stream()
                   .map(v -> (VarSymbol) v)
                   .filter(v -> isVisible(v, state.getPath()));

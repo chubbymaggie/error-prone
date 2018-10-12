@@ -115,6 +115,10 @@ public abstract class ScannerSupplier implements Supplier<Scanner> {
 
   protected abstract ImmutableSet<String> disabled();
 
+  protected Set<String> enabled() {
+    return Sets.difference(getAllChecks().keySet(), disabled());
+  }
+
   public abstract ErrorProneFlags getFlags();
 
   /**
@@ -150,6 +154,7 @@ public abstract class ScannerSupplier implements Supplier<Scanner> {
     ImmutableBiMap<String, BugCheckerInfo> checks = getAllChecks();
     Map<String, SeverityLevel> severities = new LinkedHashMap<>(severities());
     Set<String> disabled = new HashSet<>(disabled());
+    Map<String, String> flagsMap = new HashMap<>(getFlags().getFlagsMap());
 
     if (errorProneOptions.isEnableAllChecksAsWarnings()) {
       disabled.forEach(c -> severities.put(c, SeverityLevel.WARNING));
@@ -157,17 +162,13 @@ public abstract class ScannerSupplier implements Supplier<Scanner> {
     }
 
     if (errorProneOptions.isDropErrorsToWarnings()) {
-      getAllChecks()
-          .values()
-          .stream()
+      getAllChecks().values().stream()
           .filter(c -> c.defaultSeverity() == SeverityLevel.ERROR && c.disableable())
           .forEach(c -> severities.put(c.canonicalName(), SeverityLevel.WARNING));
     }
 
     if (errorProneOptions.isDisableAllChecks()) {
-      getAllChecks()
-          .values()
-          .stream()
+      getAllChecks().values().stream()
           .filter(c -> c.disableable())
           .forEach(c -> disabled.add(c.canonicalName()));
     }
@@ -217,11 +218,13 @@ public abstract class ScannerSupplier implements Supplier<Scanner> {
           }
         });
 
+    flagsMap.putAll(errorProneOptions.getFlags().getFlagsMap());
+
     return new ScannerSupplierImpl(
         checks,
         ImmutableMap.copyOf(severities),
         ImmutableSet.copyOf(disabled),
-        errorProneOptions.getFlags());
+        ErrorProneFlags.fromMap(flagsMap));
   }
 
   /**
@@ -260,7 +263,9 @@ public abstract class ScannerSupplier implements Supplier<Scanner> {
                         k, v, existing));
               }
             });
-    ImmutableSet<String> disabled = ImmutableSet.copyOf(Sets.union(disabled(), other.disabled()));
+    ImmutableSet<String> disabled =
+        Sets.difference(combinedAllChecks.keySet(), Sets.union(enabled(), other.enabled()))
+            .immutableCopy();
     ErrorProneFlags combinedFlags = this.getFlags().plus(other.getFlags());
     return new ScannerSupplierImpl(
         ImmutableBiMap.copyOf(combinedAllChecks),

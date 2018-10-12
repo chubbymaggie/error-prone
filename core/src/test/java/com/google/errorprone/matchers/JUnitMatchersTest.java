@@ -40,7 +40,7 @@ public final class JUnitMatchersTest {
       CompilationTestHelper.newInstance(JUnitVersionMatcher.class, getClass());
 
   @Test
-  public void runWithAnnotationOnClass_shouldBeJUnit4() throws Exception {
+  public void runWithAnnotationOnClass_shouldBeJUnit4() {
     compilationHelper
         .addSourceLines(
             "RunWithAnnotationOnClass.java",
@@ -53,7 +53,7 @@ public final class JUnitMatchersTest {
   }
 
   @Test
-  public void testAnnotationOnMethod_shouldBeJUnit4() throws Exception {
+  public void testAnnotationOnMethod_shouldBeJUnit4() {
     compilationHelper
         .addSourceLines(
             "TestAnnotationOnMethod.java",
@@ -66,6 +66,7 @@ public final class JUnitMatchersTest {
         .doTest();
   }
 
+  @Test
   public void beforeAfterAnnotations_notRecognized() {
     compilationHelper
         .addSourceLines(
@@ -112,12 +113,14 @@ public final class JUnitMatchersTest {
         .doTest();
   }
 
+  @Test
   public void ignoreClassAnnotation_notRecognized() {
     compilationHelper
         .addSourceLines(
             "TestIgnoreAnnotation.java",
             "import org.junit.Ignore;",
-            "// BUG: Diagnostic contains: Version:JUnit4",
+            // Uncomment this line if we decide to recognize @Ignored classes as JUnit4
+            // "// BUG: Diagnostic contains: Version:JUnit4",
             "@Ignore public class TestIgnoreAnnotation {}")
         .doTest();
   }
@@ -154,7 +157,7 @@ public final class JUnitMatchersTest {
   }
 
   @Test
-  public void ambiguous_noRecognizedVersion() throws Exception {
+  public void ambiguous_noRecognizedVersion() {
     compilationHelper
         .addSourceLines(
             "AmbiguousRunWith.java",

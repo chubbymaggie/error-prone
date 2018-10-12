@@ -18,7 +18,6 @@ package com.google.errorprone.util;
 
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
-import static com.google.common.base.Preconditions.checkState;
 import static com.google.errorprone.matchers.JUnitMatchers.JUNIT4_RUN_WITH_ANNOTATION;
 import static com.sun.tools.javac.code.Scope.LookupKind.NON_RECURSIVE;
 
@@ -46,6 +45,7 @@ import com.sun.source.tree.ForLoopTree;
 import com.sun.source.tree.IdentifierTree;
 import com.sun.source.tree.IfTree;
 import com.sun.source.tree.LambdaExpressionTree;
+import com.sun.source.tree.LiteralTree;
 import com.sun.source.tree.MemberReferenceTree;
 import com.sun.source.tree.MemberSelectTree;
 import com.sun.source.tree.MethodInvocationTree;
@@ -69,6 +69,7 @@ import com.sun.source.util.TreePath;
 import com.sun.tools.javac.api.JavacTrees;
 import com.sun.tools.javac.code.Attribute;
 import com.sun.tools.javac.code.Attribute.Compound;
+import com.sun.tools.javac.code.Attribute.TypeCompound;
 import com.sun.tools.javac.code.Flags;
 import com.sun.tools.javac.code.Scope;
 import com.sun.tools.javac.code.Symbol;
@@ -81,13 +82,18 @@ import com.sun.tools.javac.code.Symbol.VarSymbol;
 import com.sun.tools.javac.code.Type;
 import com.sun.tools.javac.code.Type.ClassType;
 import com.sun.tools.javac.code.Type.TypeVar;
+import com.sun.tools.javac.code.TypeAnnotations;
+import com.sun.tools.javac.code.TypeAnnotations.AnnotationType;
 import com.sun.tools.javac.code.TypeTag;
 import com.sun.tools.javac.code.Types;
 import com.sun.tools.javac.comp.Enter;
 import com.sun.tools.javac.comp.Resolve;
+import com.sun.tools.javac.parser.Tokens.TokenKind;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.JCTree.JCAnnotatedType;
+import com.sun.tools.javac.tree.JCTree.JCAnnotation;
 import com.sun.tools.javac.tree.JCTree.JCClassDecl;
+import com.sun.tools.javac.tree.JCTree.JCCompilationUnit;
 import com.sun.tools.javac.tree.JCTree.JCFieldAccess;
 import com.sun.tools.javac.tree.JCTree.JCIdent;
 import com.sun.tools.javac.tree.JCTree.JCLiteral;
@@ -123,6 +129,7 @@ import javax.annotation.Nullable;
 import javax.lang.model.element.AnnotationMirror;
 import javax.lang.model.element.AnnotationValue;
 import javax.lang.model.element.ElementKind;
+import javax.lang.model.element.Modifier;
 import javax.lang.model.type.TypeKind;
 import javax.lang.model.util.SimpleAnnotationValueVisitor8;
 
@@ -223,6 +230,9 @@ public class ASTHelpers {
     if (tree instanceof ParameterizedTypeTree) {
       return getSymbol(((ParameterizedTypeTree) tree).getType());
     }
+    if (tree instanceof ClassTree) {
+      return getSymbol((ClassTree) tree);
+    }
 
     return getDeclaredSymbol(tree);
   }
@@ -267,6 +277,33 @@ public class ASTHelpers {
   public static MethodSymbol getSymbol(MemberReferenceTree tree) {
     Symbol sym = ((JCMemberReference) tree).sym;
     return sym instanceof MethodSymbol ? (MethodSymbol) sym : null;
+  }
+
+  /* Checks whether an expression requires parentheses. */
+  public static boolean requiresParentheses(ExpressionTree expression, VisitorState state) {
+    switch (expression.getKind()) {
+      case IDENTIFIER:
+      case MEMBER_SELECT:
+      case METHOD_INVOCATION:
+      case ARRAY_ACCESS:
+      case PARENTHESIZED:
+      case NEW_CLASS:
+      case LAMBDA_EXPRESSION:
+        return false;
+      default: // continue below
+    }
+    if (expression instanceof LiteralTree) {
+      if (!isSameType(getType(expression), state.getSymtab().stringType, state)) {
+        return false;
+      }
+      // TODO(b/112139121): work around for javac's too-early constant string folding
+      return ErrorProneTokens.getTokens(state.getSourceForNode(expression), state.context).stream()
+          .anyMatch(t -> t.kind() == TokenKind.PLUS);
+    }
+    if (expression instanceof UnaryTree) {
+      return false;
+    }
+    return true;
   }
 
   /** Removes any enclosing parentheses from the tree. */
@@ -536,9 +573,7 @@ public class ASTHelpers {
   private static Stream<MethodSymbol> findSuperMethods(
       MethodSymbol methodSymbol, Types types, boolean skipInterfaces) {
     TypeSymbol owner = (TypeSymbol) methodSymbol.owner;
-    return types
-        .closure(owner.type)
-        .stream()
+    return types.closure(owner.type).stream()
         .filter(closureTypes -> skipInterfaces ? !closureTypes.isInterface() : true)
         .map(type -> findSuperMethodInType(methodSymbol, type, types))
         .filter(Objects::nonNull);
@@ -574,6 +609,31 @@ public class ASTHelpers {
   }
 
   /**
+   * Determines whether a method can be overridden.
+   *
+   * @return true if the method can be overridden.
+   */
+  public static boolean methodCanBeOverridden(MethodSymbol methodSymbol) {
+    if (methodSymbol.getModifiers().contains(Modifier.ABSTRACT)) {
+      return true;
+    }
+
+    if (methodSymbol.isStatic()
+        || methodSymbol.isPrivate()
+        || isFinal(methodSymbol)
+        || methodSymbol.isConstructor()) {
+      return false;
+    }
+
+    ClassSymbol classSymbol = (ClassSymbol) methodSymbol.owner;
+    return !isFinal(classSymbol) && !classSymbol.isAnonymous();
+  }
+
+  private static boolean isFinal(Symbol symbol) {
+    return (symbol.flags() & Flags.FINAL) == Flags.FINAL;
+  }
+
+  /**
    * Determines whether a symbol has an annotation of the given type. This includes annotations
    * inherited from superclasses due to {@code @Inherited}.
    *
@@ -582,11 +642,30 @@ public class ASTHelpers {
    * @return true if the symbol is annotated with given type.
    */
   public static boolean hasAnnotation(Symbol sym, String annotationClass, VisitorState state) {
+    if (sym == null) {
+      return false;
+    }
+    // normalize to non-binary names
+    annotationClass = annotationClass.replace('$', '.');
     Name annotationName = state.getName(annotationClass);
-    Symbol annotationSym;
-    synchronized (state.context) {
-      annotationSym =
-          state.getSymtab().enterClass(state.inferModule(annotationName), annotationName);
+    if (hasAttribute(sym, annotationName)) {
+      return true;
+    }
+    if (isInherited(state, annotationClass)) {
+      while (sym instanceof ClassSymbol) {
+        if (hasAttribute(sym, annotationName)) {
+          return true;
+        }
+        sym = ((ClassSymbol) sym).getSuperclass().tsym;
+      }
+    }
+    return false;
+  }
+
+  private static boolean isInherited(VisitorState state, String annotationName) {
+    Symbol annotationSym = state.getSymbolFromString(annotationName);
+    if (annotationSym == null) {
+      return false;
     }
     try {
       annotationSym.complete();
@@ -595,21 +674,12 @@ public class ASTHelpers {
       // if it's present directly
     }
     Symbol inheritedSym = state.getSymtab().inheritedType.tsym;
+    return annotationSym.attribute(inheritedSym) != null;
+  }
 
-    if ((sym == null) || (annotationSym == null)) {
-      return false;
-    }
-    if ((sym instanceof ClassSymbol) && (annotationSym.attribute(inheritedSym) != null)) {
-      while (sym != null) {
-        if (sym.attribute(annotationSym) != null) {
-          return true;
-        }
-        sym = ((ClassSymbol) sym).getSuperclass().tsym;
-      }
-      return false;
-    } else {
-      return sym.attribute(annotationSym) != null;
-    }
+  private static boolean hasAttribute(Symbol sym, Name annotationName) {
+    return sym.getRawAttributes().stream()
+        .anyMatch(a -> a.type.tsym.getQualifiedName().equals(annotationName));
   }
 
   /**
@@ -784,6 +854,17 @@ public class ASTHelpers {
     return sym.packge();
   }
 
+  /** Return true if the given symbol is defined in the current package. */
+  public static boolean inSamePackage(Symbol targetSymbol, VisitorState state) {
+    JCCompilationUnit compilationUnit = (JCCompilationUnit) state.getPath().getCompilationUnit();
+    PackageSymbol usePackage = compilationUnit.packge;
+    PackageSymbol targetPackage = targetSymbol.packge();
+
+    return targetPackage != null
+        && usePackage != null
+        && targetPackage.getQualifiedName().equals(usePackage.getQualifiedName());
+  }
+
   /**
    * Returns the {@link Nullness} for an expression as determined by the nullness dataflow analysis.
    */
@@ -831,9 +912,15 @@ public class ASTHelpers {
         || state.getTypes().isSameType(Suppliers.JAVA_LANG_VOID_TYPE.get(state), type);
   }
 
+  private static final Set<TypeTag> SUBTYPE_UNDEFINED =
+      EnumSet.of(TypeTag.METHOD, TypeTag.PACKAGE, TypeTag.UNKNOWN, TypeTag.ERROR);
+
   /** Returns true if {@code erasure(s) <: erasure(t)}. */
   public static boolean isSubtype(Type s, Type t, VisitorState state) {
     if (s == null || t == null) {
+      return false;
+    }
+    if (SUBTYPE_UNDEFINED.contains(s.getTag()) || SUBTYPE_UNDEFINED.contains(t.getTag())) {
       return false;
     }
     Types types = state.getTypes();
@@ -936,6 +1023,35 @@ public class ASTHelpers {
     return simpleName.contentEquals(name);
   }
 
+  /**
+   * Returns whether {@code anno} corresponds to a type annotation, or {@code null} if it could not
+   * be determined.
+   */
+  @Nullable
+  public static AnnotationType getAnnotationType(
+      AnnotationTree anno, @Nullable Symbol target, VisitorState state) {
+    if (target == null) {
+      return null;
+    }
+    Symbol annoSymbol = getSymbol(anno);
+    if (annoSymbol == null) {
+      return null;
+    }
+    Compound compound = target.attribute(annoSymbol);
+    if (compound == null) {
+      for (TypeCompound typeCompound : target.getRawTypeAttributes()) {
+        if (typeCompound.type.tsym.equals(annoSymbol)) {
+          compound = typeCompound;
+          break;
+        }
+      }
+    }
+    if (compound == null) {
+      return null;
+    }
+    return TypeAnnotations.instance(state.context).annotationTargetType(compound, target);
+  }
+
   private static final CharMatcher BACKSLASH_MATCHER = CharMatcher.is('\\');
 
   /**
@@ -1034,10 +1150,7 @@ public class ASTHelpers {
       return ImmutableSet.of();
     }
     Optional<Attribute> values =
-        c.get()
-            .getElementValues()
-            .entrySet()
-            .stream()
+        c.get().getElementValues().entrySet().stream()
             .filter(e -> e.getKey().getSimpleName().contentEquals("value"))
             .map(e -> e.getValue())
             .findAny();
@@ -1187,23 +1300,46 @@ public class ASTHelpers {
 
     @Override
     public Type visitCompoundAssignment(CompoundAssignmentTree tree, Void unused) {
+      Type variableType = getType(tree.getVariable());
+      Type expressionType = getType(tree.getExpression());
+      Types types = state.getTypes();
       switch (tree.getKind()) {
         case LEFT_SHIFT_ASSIGNMENT:
         case RIGHT_SHIFT_ASSIGNMENT:
         case UNSIGNED_RIGHT_SHIFT_ASSIGNMENT:
           // Shift operators perform *unary* numeric promotion on the operands, separately.
           if (tree.getExpression().equals(current)) {
-            return unaryNumericPromotion(ASTHelpers.getType(current), state);
+            return unaryNumericPromotion(expressionType, state);
           }
-          // Fall through.
+          break;
+        case PLUS_ASSIGNMENT:
+          Type stringType = state.getSymtab().stringType;
+          if (types.isSameType(stringType, variableType)) {
+            return stringType;
+          }
+          break;
         default:
-          return getType(tree.getVariable());
+          // Fall though.
       }
+      // If we've got to here, we can only have boolean or numeric operands
+      // (because the only compound assignment operator for String is +=).
+
+      // These operands will necessarily be unboxed (and, if numeric, undergo binary numeric
+      // promotion), even if the resulting expression is of boxed type. As such, report the unboxed
+      // type.
+      return types.unboxedTypeOrType(variableType).getTag() == TypeTag.BOOLEAN
+          ? state.getSymtab().booleanType
+          : binaryNumericPromotion(variableType, expressionType, state);
     }
 
     @Override
     public Type visitLambdaExpression(LambdaExpressionTree lambdaExpressionTree, Void unused) {
       return state.getTypes().findDescriptorType(getType(lambdaExpressionTree)).getReturnType();
+    }
+
+    @Override
+    public Type visitParenthesized(ParenthesizedTree node, Void unused) {
+      return visit(node.getExpression(), unused);
     }
 
     @Override
@@ -1318,29 +1454,40 @@ public class ASTHelpers {
 
     @Override
     public Type visitNewClass(NewClassTree tree, Void unused) {
-      return visitMethodInvocationOrNewClass(tree.getArguments(), ASTHelpers.getSymbol(tree));
+      return visitMethodInvocationOrNewClass(
+          tree.getArguments(), ASTHelpers.getSymbol(tree), ((JCNewClass) tree).constructorType);
     }
 
     @Override
     public Type visitMethodInvocation(MethodInvocationTree tree, Void unused) {
-      return visitMethodInvocationOrNewClass(tree.getArguments(), ASTHelpers.getSymbol(tree));
+      return visitMethodInvocationOrNewClass(
+          tree.getArguments(), ASTHelpers.getSymbol(tree), ((JCMethodInvocation) tree).meth.type);
     }
 
     private Type visitMethodInvocationOrNewClass(
-        List<? extends ExpressionTree> arguments, MethodSymbol sym) {
+        List<? extends ExpressionTree> arguments, MethodSymbol sym, Type type) {
       int idx = arguments.indexOf(current);
       if (idx == -1) {
         return null;
       }
-      if (sym.getParameters().size() <= idx) {
-        checkState(sym.isVarArgs());
-        idx = sym.getParameters().size() - 1;
+      if (type.getParameterTypes().size() <= idx) {
+        if (!sym.isVarArgs()) {
+          if ((sym.flags() & Flags.HYPOTHETICAL) != 0) {
+            // HYPOTHETICAL is also used for signature-polymorphic methods
+            return null;
+          }
+          throw new IllegalStateException(
+              String.format(
+                  "saw %d formal parameters and %d actual parameters on non-varargs method %s\n",
+                  type.getParameterTypes().size(), arguments.size(), sym));
+        }
+        idx = type.getParameterTypes().size() - 1;
       }
-      Type type = sym.getParameters().get(idx).asType();
-      if (sym.isVarArgs() && idx == sym.getParameters().size() - 1) {
-        type = state.getTypes().elemtype(type);
+      Type argType = type.getParameterTypes().get(idx);
+      if (sym.isVarArgs() && idx == type.getParameterTypes().size() - 1) {
+        argType = state.getTypes().elemtype(argType);
       }
-      return type;
+      return argType;
     }
 
     @Override
@@ -1415,5 +1562,21 @@ public class ASTHelpers {
    */
   public static Stream<Attribute.Compound> getDeclarationAndTypeAttributes(Symbol sym) {
     return MoreAnnotations.getDeclarationAndTypeAttributes(sym);
+  }
+
+  /**
+   * Return a mirror of this annotation.
+   *
+   * @param annotationTree
+   * @return an {@code AnnotationMirror} for the annotation represented by {@code annotationTree}.
+   */
+  public static AnnotationMirror getAnnotationMirror(AnnotationTree annotationTree) {
+    return ((JCAnnotation) annotationTree).attribute;
+  }
+
+  /** Returns whether the given {@code tree} contains any comments in its source. */
+  public static boolean containsComments(Tree tree, VisitorState state) {
+    return ErrorProneTokens.getTokens(state.getSourceForNode(tree), state.context).stream()
+        .anyMatch(t -> !t.comments().isEmpty());
   }
 }

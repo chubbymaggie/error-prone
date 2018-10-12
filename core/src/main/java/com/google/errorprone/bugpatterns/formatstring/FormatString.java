@@ -31,10 +31,10 @@ import com.google.errorprone.matchers.Matcher;
 import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.MethodInvocationTree;
+import com.sun.tools.javac.code.Symbol.MethodSymbol;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.Locale;
-import java.util.regex.Pattern;
 
 /** @author cushon@google.com (Liam Miller-Cushon) */
 @BugPattern(
@@ -47,21 +47,21 @@ public class FormatString extends BugChecker implements MethodInvocationTreeMatc
   // TODO(cushon): add support for additional printf methods, maybe with an annotation
   private static final Matcher<ExpressionTree> FORMAT_METHOD =
       anyOf(
-          instanceMethod()
-              .onDescendantOf("java.io.PrintStream")
-              .withNameMatching(Pattern.compile("format|printf")),
-          instanceMethod()
-              .onDescendantOf("java.io.PrintWriter")
-              .withNameMatching(Pattern.compile("format|printf")),
+          instanceMethod().onDescendantOf("java.io.PrintStream").namedAnyOf("format", "printf"),
+          instanceMethod().onDescendantOf("java.io.PrintWriter").namedAnyOf("format", "printf"),
           instanceMethod().onDescendantOf("java.util.Formatter").named("format"),
           staticMethod().onClass("java.lang.String").named("format"),
           staticMethod()
               .onClass("java.io.Console")
-              .withNameMatching(Pattern.compile("format|printf|readline|readPassword")));
+              .namedAnyOf("format", "printf", "readline", "readPassword"));
 
   @Override
   public Description matchMethodInvocation(MethodInvocationTree tree, final VisitorState state) {
     if (!FORMAT_METHOD.matches(tree, state)) {
+      return Description.NO_MATCH;
+    }
+    MethodSymbol sym = ASTHelpers.getSymbol(tree);
+    if (sym == null) {
       return Description.NO_MATCH;
     }
     Deque<ExpressionTree> args = new ArrayDeque<>(tree.getArguments());
@@ -72,7 +72,8 @@ public class FormatString extends BugChecker implements MethodInvocationTreeMatc
         state)) {
       args.removeFirst();
     }
-    FormatStringValidation.ValidationResult result = FormatStringValidation.validate(args, state);
+    FormatStringValidation.ValidationResult result =
+        FormatStringValidation.validate(sym, args, state);
     if (result == null) {
       return Description.NO_MATCH;
     }

@@ -16,6 +16,7 @@
 
 package com.google.errorprone.bugpatterns;
 
+import com.google.common.collect.ImmutableList;
 import com.google.errorprone.CompilationTestHelper;
 import org.junit.Before;
 import org.junit.Test;
@@ -34,7 +35,7 @@ public class MissingOverrideTest {
   }
 
   @Test
-  public void simple() throws Exception {
+  public void simple() {
     compilationHelper
         .addSourceLines("Super.java", "public class Super {", "  void f() {}", "}")
         .addSourceLines(
@@ -47,7 +48,7 @@ public class MissingOverrideTest {
   }
 
   @Test
-  public void abstractMethod() throws Exception {
+  public void abstractMethod() {
     compilationHelper
         .addSourceLines("Super.java", "public abstract class Super {", "  abstract void f();", "}")
         .addSourceLines(
@@ -60,7 +61,7 @@ public class MissingOverrideTest {
   }
 
   @Test
-  public void interfaceMethod() throws Exception {
+  public void interfaceMethod() {
     compilationHelper
         .addSourceLines("Super.java", "interface Super {", "  void f();", "}")
         .addSourceLines(
@@ -73,7 +74,7 @@ public class MissingOverrideTest {
   }
 
   @Test
-  public void bothStatic() throws Exception {
+  public void bothStatic() {
     compilationHelper
         .addSourceLines("Super.java", "public class Super {", "  static void f() {}", "}")
         .addSourceLines(
@@ -82,11 +83,33 @@ public class MissingOverrideTest {
   }
 
   @Test
-  public void deprecatedMethod() throws Exception {
+  public void deprecatedMethod() {
     compilationHelper
         .addSourceLines("Super.java", "public class Super {", "  @Deprecated void f() {}", "}")
         .addSourceLines(
             "Test.java", "public class Test extends Super {", "  public void f() {}", "}")
+        .doTest();
+  }
+
+  @Test
+  public void interfaceOverride() {
+    compilationHelper
+        .addSourceLines("Super.java", "interface Super {", "  void f();", "}")
+        .addSourceLines(
+            "Test.java",
+            "public interface Test extends Super {",
+            "  // BUG: Diagnostic contains: f implements method in Super; expected @Override",
+            "  void f();",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void ignoreInterfaceOverride() {
+    compilationHelper
+        .setArgs(ImmutableList.of("-XepOpt:MissingOverride:IgnoreInterfaceOverrides=true"))
+        .addSourceLines("Super.java", "interface Super {", "  void f();", "}")
+        .addSourceLines("Test.java", "public interface Test extends Super {", "  void f();", "}")
         .doTest();
   }
 }

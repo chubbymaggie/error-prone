@@ -18,8 +18,8 @@ package com.google.errorprone.dataflow.nullnesspropagation;
 
 import static com.google.common.base.Preconditions.checkArgument;
 
+import com.google.errorprone.dataflow.AccessPathStore;
 import com.google.errorprone.dataflow.DataFlow;
-import com.google.errorprone.dataflow.LocalStore;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.ExpressionTree;
 import com.sun.source.tree.Tree;
@@ -37,7 +37,7 @@ import org.checkerframework.dataflow.cfg.ControlFlowGraph;
 import org.checkerframework.dataflow.cfg.UnderlyingAST;
 
 /**
- * An interface to the "trusting" nullness analysis. This variant "trusts" {@code Nullabe}
+ * An interface to the "trusting" nullness analysis. This variant "trusts" {@code Nullable}
  * annotations, similar to how a modular nullness checker like the checkerframework's would, meaning
  * method parameters, fields, and method returns are assumed {@link Nullness#NULLABLE} only if
  * annotated so.
@@ -106,17 +106,17 @@ public final class TrustingNullnessAnalysis implements Serializable {
     ControlFlowGraph cfg =
         CFGBuilder.build(
             initializerPath,
-            javacEnv,
             ast,
             /* assumeAssertionsEnabled */ false,
-            /* assumeAssertionsDisabled */ false);
+            /* assumeAssertionsDisabled */ false,
+            javacEnv);
     try {
       nullnessPropagation
           .setContext(context)
           .setCompilationUnit(fieldDeclPath.getCompilationUnit());
 
-      Analysis<Nullness, LocalStore<Nullness>, TrustingNullnessPropagation> analysis =
-          new Analysis<>(javacEnv, nullnessPropagation);
+      Analysis<Nullness, AccessPathStore<Nullness>, TrustingNullnessPropagation> analysis =
+          new Analysis<>(nullnessPropagation, javacEnv);
       analysis.performAnalysis(cfg);
       return analysis.getValue(initializer);
     } finally {
@@ -125,6 +125,6 @@ public final class TrustingNullnessAnalysis implements Serializable {
   }
 
   public static boolean hasNullableAnnotation(Symbol symbol) {
-    return TrustingNullnessPropagation.nullnessFromAnnotations(symbol) == Nullness.NULLABLE;
+    return Nullness.fromAnnotationsOn(symbol).orElse(null) == Nullness.NULLABLE;
   }
 }

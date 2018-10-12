@@ -16,10 +16,13 @@
 
 package com.google.errorprone.bugpatterns;
 
+import static org.junit.Assume.assumeTrue;
+
 import com.google.errorprone.BugCheckerRefactoringTestHelper;
 import com.google.errorprone.BugCheckerRefactoringTestHelper.TestMode;
 import com.google.errorprone.CompilationTestHelper;
-import java.io.IOException;
+import java.lang.reflect.Method;
+import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -31,7 +34,7 @@ public class StringSplitterTest {
       BugCheckerRefactoringTestHelper.newInstance(new StringSplitter(), getClass());
 
   @Test
-  public void positive() throws IOException {
+  public void positive() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -51,8 +54,129 @@ public class StringSplitterTest {
         .doTest(TestMode.TEXT_MATCH);
   }
 
+  // Regression test for issue #1124
   @Test
-  public void varLoop() throws IOException {
+  public void positive_localVarTypeInference() {
+    assumeTrue(isJdk10OrGreater());
+    testHelper
+        .addInputLines(
+            "Test.java",
+            "class Test {",
+            "  void f() {",
+            "    var lines = \"\".split(\":\");",
+            "  }",
+            "}")
+        .addOutputLines(
+            "Test.java",
+            "import com.google.common.base.Splitter;",
+            "class Test {",
+            "  void f() {",
+            "    var lines = Splitter.on(':').split(\"\");",
+            "  }",
+            "}")
+        .doTest(TestMode.TEXT_MATCH);
+  }
+
+  @Test
+  public void positive_patternIsSymbol() {
+    testHelper
+        .addInputLines(
+            "Test.java",
+            "class Test {",
+            "  static final String NON_REGEX_PATTERN_STRING = \":\";",
+            "  static final String REGEX_PATTERN_STRING = \".*\";",
+            "  static final String CONVERTIBLE_PATTERN_STRING = \"\\\\Q\\\\E:\";",
+            "  void f() {",
+            "    for (String s : \"\".split(NON_REGEX_PATTERN_STRING)) {}",
+            "    for (String s : \"\".split(REGEX_PATTERN_STRING)) {}",
+            "    for (String s : \"\".split(CONVERTIBLE_PATTERN_STRING)) {}",
+            "    for (String s : \"\".split((CONVERTIBLE_PATTERN_STRING))) {}",
+            "  }",
+            "}")
+        .addOutputLines(
+            "Test.java",
+            "import com.google.common.base.Splitter;",
+            "class Test {",
+            "  static final String NON_REGEX_PATTERN_STRING = \":\";",
+            "  static final String REGEX_PATTERN_STRING = \".*\";",
+            "  static final String CONVERTIBLE_PATTERN_STRING = \"\\\\Q\\\\E:\";",
+            "  void f() {",
+            "    for (String s : Splitter.onPattern(NON_REGEX_PATTERN_STRING).split(\"\")) {}",
+            "    for (String s : Splitter.onPattern(REGEX_PATTERN_STRING).split(\"\")) {}",
+            "    for (String s : Splitter.onPattern(CONVERTIBLE_PATTERN_STRING).split(\"\")) {}",
+            "    for (String s : Splitter.onPattern((CONVERTIBLE_PATTERN_STRING)).split(\"\")) {}",
+            "  }",
+            "}")
+        .doTest(TestMode.TEXT_MATCH);
+  }
+
+  @Test
+  public void positive_patternIsConcatenation() {
+    testHelper
+        .addInputLines(
+            "Test.java",
+            "class Test {",
+            "  void f() {",
+            "    for (String s : \"\".split(\":\" + 0)) {}",
+            "  }",
+            "}")
+        .addOutputLines(
+            "Test.java",
+            "import com.google.common.base.Splitter;",
+            "class Test {",
+            "  void f() {",
+            "    for (String s : Splitter.onPattern(\":\" + 0).split(\"\")) {}",
+            "  }",
+            "}")
+        .doTest(TestMode.TEXT_MATCH);
+  }
+
+  @Test
+  public void positive_patternNotConstant() {
+    testHelper
+        .addInputLines(
+            "Test.java",
+            "class Test {",
+            "  void f() {",
+            "    String pattern = \":\";",
+            "    for (String s : \"\".split(pattern)) {}",
+            "  }",
+            "}")
+        .addOutputLines(
+            "Test.java",
+            "import com.google.common.base.Splitter;",
+            "class Test {",
+            "  void f() {",
+            "    String pattern = \":\";",
+            "    for (String s : Splitter.onPattern(pattern).split(\"\")) {}",
+            "  }",
+            "}")
+        .doTest(TestMode.TEXT_MATCH);
+  }
+
+  @Test
+  public void positive_singleEscapedCharacter() {
+    testHelper
+        .addInputLines(
+            "Test.java",
+            "class Test {",
+            "  void f() {",
+            "    for (String s : \"\".split(\"\\u0000\")) {}",
+            "  }",
+            "}")
+        .addOutputLines(
+            "Test.java",
+            "import com.google.common.base.Splitter;",
+            "class Test {",
+            "  void f() {",
+            "    for (String s : Splitter.on('\\u0000').split(\"\")) {}",
+            "  }",
+            "}")
+        .doTest(TestMode.TEXT_MATCH);
+  }
+
+  @Test
+  public void varLoop() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -75,7 +199,7 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void varLoopLength() throws IOException {
+  public void varLoopLength() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -99,7 +223,7 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void varList() throws IOException {
+  public void varList() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -125,7 +249,7 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void positiveRegex() throws IOException {
+  public void positiveRegex() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -146,7 +270,7 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void character() throws IOException {
+  public void character() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -169,7 +293,7 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void negative() throws IOException {
+  public void negative() {
     CompilationTestHelper.newInstance(StringSplitter.class, getClass())
         .addSourceLines(
             "Test.java",
@@ -183,7 +307,7 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void mutation() throws IOException {
+  public void mutation() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -211,7 +335,7 @@ public class StringSplitterTest {
 
   // regression test for b/72088500
   @Test
-  public void b72088500() throws IOException {
+  public void b72088500() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -235,7 +359,7 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void escape() throws IOException {
+  public void escape() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -256,7 +380,7 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void immediateArrayAccess() throws IOException {
+  public void immediateArrayAccess() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -280,21 +404,22 @@ public class StringSplitterTest {
   }
 
   @Test
-  public void testStringSplitPositive() throws Exception {
+  public void testStringSplitPositive() {
     CompilationTestHelper.newInstance(StringSplitter.class, getClass())
         .addSourceFile("StringSplitPositiveCases.java")
         .doTest();
   }
 
   @Test
-  public void testStringSplitNegative() throws Exception {
+  public void testStringSplitNegative() {
     CompilationTestHelper.newInstance(StringSplitter.class, getClass())
         .addSourceFile("StringSplitNegativeCases.java")
         .doTest();
   }
 
+  @Ignore("b/112270644")
   @Test
-  public void noSplitterOnClassPath() throws IOException {
+  public void noSplitterOnClassPath() {
     testHelper
         .addInputLines(
             "Test.java",
@@ -312,5 +437,16 @@ public class StringSplitterTest {
             "}")
         .setArgs("-cp", ":")
         .doTest(TestMode.TEXT_MATCH);
+  }
+
+  private static boolean isJdk10OrGreater() {
+    try {
+      Method versionMethod = Runtime.class.getMethod("version");
+      Object version = versionMethod.invoke(null);
+      int majorVersion = (int) version.getClass().getMethod("major").invoke(version);
+      return majorVersion >= 10;
+    } catch (ReflectiveOperationException e) {
+      return false;
+    }
   }
 }

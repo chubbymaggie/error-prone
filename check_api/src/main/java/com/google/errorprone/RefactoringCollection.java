@@ -35,9 +35,10 @@ import com.google.errorprone.apply.PatchFileDestination;
 import com.google.errorprone.apply.SourceFile;
 import com.google.errorprone.matchers.Description;
 import com.sun.tools.javac.tree.JCTree.JCCompilationUnit;
+import com.sun.tools.javac.util.Context;
 import com.sun.tools.javac.util.Log;
-import java.io.IOError;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.net.URI;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
@@ -76,7 +77,7 @@ class RefactoringCollection implements DescriptionListener.Factory {
     CHANGED,
   }
 
-  static RefactoringCollection refactor(PatchingOptions patchingOptions) {
+  static RefactoringCollection refactor(PatchingOptions patchingOptions, Context context) {
     Path rootPath = buildRootPath();
     FileDestination fileDestination;
     Function<URI, RefactoringResult> postProcess;
@@ -119,18 +120,20 @@ class RefactoringCollection implements DescriptionListener.Factory {
     }
 
     ImportOrganizer importOrganizer = patchingOptions.importOrganizer();
-    return new RefactoringCollection(rootPath, fileDestination, postProcess, importOrganizer);
+    return new RefactoringCollection(
+        rootPath, fileDestination, postProcess, importOrganizer, context);
   }
 
   private RefactoringCollection(
       Path rootPath,
       FileDestination fileDestination,
       Function<URI, RefactoringResult> postProcess,
-      ImportOrganizer importOrganizer) {
+      ImportOrganizer importOrganizer,
+      Context context) {
     this.rootPath = rootPath;
     this.fileDestination = fileDestination;
     this.postProcess = postProcess;
-    this.descriptionsFactory = JavacErrorDescriptionListener.providerForRefactoring();
+    this.descriptionsFactory = JavacErrorDescriptionListener.providerForRefactoring(context);
     this.importOrganizer = importOrganizer;
   }
 
@@ -173,7 +176,7 @@ class RefactoringCollection implements DescriptionListener.Factory {
         try {
           Files.deleteIfExists(patchFilePatch);
         } catch (IOException e) {
-          throw new IOError(e);
+          throw new UncheckedIOException(e);
         }
       }
       Files.write(patchFilePatch, patchFile.getBytes(UTF_8), APPEND, CREATE);

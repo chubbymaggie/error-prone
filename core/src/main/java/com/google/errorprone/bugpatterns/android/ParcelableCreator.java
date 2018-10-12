@@ -51,12 +51,11 @@ import javax.lang.model.element.Modifier;
  * @author Sumit Bhagwani (bhagwani@google.com)
  */
 @BugPattern(
-  name = "ParcelableCreator",
-  summary = "Detects classes which implement Parcelable but don't have CREATOR",
-  category = Category.ANDROID,
-  severity = SeverityLevel.ERROR,
-  providesFix = ProvidesFix.NO_FIX
-)
+    name = "ParcelableCreator",
+    summary = "Detects classes which implement Parcelable but don't have CREATOR",
+    category = Category.ANDROID,
+    severity = SeverityLevel.ERROR,
+    providesFix = ProvidesFix.NO_FIX)
 public class ParcelableCreator extends BugChecker implements ClassTreeMatcher {
 
   /** Matches if a non-public non-abstract class/interface is subtype of android.os.Parcelable */
@@ -111,7 +110,8 @@ public class ParcelableCreator extends BugChecker implements ClassTreeMatcher {
     }
     List<Type> typeArguments = superType.getTypeArguments();
     if (typeArguments.isEmpty()) {
-      return false;
+      // raw creator
+      return true;
     }
     return ASTHelpers.isSubtype(classType, Iterables.getOnlyElement(typeArguments), state);
   }

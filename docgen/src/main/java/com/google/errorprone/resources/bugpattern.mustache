@@ -7,6 +7,15 @@ To make changes, edit the @BugPattern annotation or the explanation in docs/bugp
 -->
 {{^frontmatter}}
 
+# {{name}}
+{{#baseUrl}}
+
+{{baseUrl}}/{{name}}
+
+{{/baseUrl}}
+
+__{{summary}}__
+
 <div style="float:right;"><table id="metadata">
 <tr><td>Severity</td><td>{{severity}}</td></tr>
 {{#tags}}
@@ -15,15 +24,9 @@ To make changes, edit the @BugPattern annotation or the explanation in docs/bugp
 {{#providesFix}}
 <tr><td>Provides Fix?</td><td>{{providesFix}}</td></tr>
 {{/providesFix}}
+<div class=".more-info" data-qualified-name={{className}}></div>
 </table></div>
 
-# {{name}}
-{{#baseUrl}}
-
-{{baseUrl}}/{{name}}
-
-{{/baseUrl}}
-__{{summary}}__
 {{/frontmatter}}
 {{#altNames}}
 

@@ -1030,7 +1030,11 @@ public class ImmutableCheckerTest {
             "  public int x = 0;",
             "}")
         .addSourceLines(
-            "threadsafety/J.java", "package threadsafety;", "interface J extends I {", "}")
+            "threadsafety/J.java", //
+            "package threadsafety;",
+            "// BUG: Diagnostic contains: extends @Immutable",
+            "interface J extends I {",
+            "}")
         .doTest();
   }
 
@@ -1420,7 +1424,7 @@ public class ImmutableCheckerTest {
             "Test.java",
             "import " + ClassPathTest.class.getCanonicalName() + ";",
             "class Test extends ClassPathTest<String> {",
-            "  // BUG: Diagnostic contains: non-final",
+            "  // BUG: Diagnostic contains: 'Test' has non-final field 'x'",
             "  int x;",
             "}")
         .setArgs(Arrays.asList("-cp", libJar.toString()))

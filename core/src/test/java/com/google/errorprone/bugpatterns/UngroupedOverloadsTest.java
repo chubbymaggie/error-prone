@@ -16,9 +16,11 @@
 
 package com.google.errorprone.bugpatterns;
 
+import com.google.common.collect.ImmutableList;
 import com.google.errorprone.BugCheckerRefactoringTestHelper;
 import com.google.errorprone.BugCheckerRefactoringTestHelper.TestMode;
 import com.google.errorprone.CompilationTestHelper;
+import com.google.errorprone.ErrorProneFlags;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -32,35 +34,44 @@ public final class UngroupedOverloadsTest {
       CompilationTestHelper.newInstance(UngroupedOverloads.class, getClass());
 
   private final BugCheckerRefactoringTestHelper refactoringHelper =
-      BugCheckerRefactoringTestHelper.newInstance(new UngroupedOverloads(), getClass());
+      BugCheckerRefactoringTestHelper.newInstance(
+          new UngroupedOverloads(ErrorProneFlags.empty()), getClass());
 
   @Test
-  public void ungroupedOverloadsPositiveCasesSingle() throws Exception {
+  public void ungroupedOverloadsPositiveCasesSingle() {
     compilationHelper.addSourceFile("UngroupedOverloadsPositiveCasesSingle.java").doTest();
   }
 
   @Test
-  public void ungroupedOverloadsPositiveCasesMultiple() throws Exception {
+  public void ungroupedOverloadsPositiveCasesMultiple() {
     compilationHelper.addSourceFile("UngroupedOverloadsPositiveCasesMultiple.java").doTest();
   }
 
   @Test
-  public void ungroupedOverloadsPositiveCasesInterleaved() throws Exception {
+  public void ungroupedOverloadsPositiveCasesInterleaved() {
     compilationHelper.addSourceFile("UngroupedOverloadsPositiveCasesInterleaved.java").doTest();
   }
 
   @Test
-  public void ungroupedOverloadsPositiveCasesCovering() throws Exception {
+  public void ungroupedOverloadsPositiveCasesCovering() {
     compilationHelper.addSourceFile("UngroupedOverloadsPositiveCasesCovering.java").doTest();
   }
 
   @Test
-  public void ungroupedOverloadsNegativeCases() throws Exception {
+  public void ungroupedOverloadsPositiveCasesCoveringOnlyFirstOverload() {
+    compilationHelper
+        .addSourceFile("UngroupedOverloadsPositiveCasesCoveringOnlyOnFirst.java")
+        .setArgs(ImmutableList.of("-XepOpt:UngroupedOverloads:FindingsOnFirstOverload"))
+        .doTest();
+  }
+
+  @Test
+  public void ungroupedOverloadsNegativeCases() {
     compilationHelper.addSourceFile("UngroupedOverloadsNegativeCases.java").doTest();
   }
 
   @Test
-  public void ungroupedOverloadsRefactoringComments() throws Exception {
+  public void ungroupedOverloadsRefactoringComments() {
     refactoringHelper
         .addInput("UngroupedOverloadsRefactoringComments.java")
         .addOutput("UngroupedOverloadsRefactoringComments_expected.java")
@@ -68,7 +79,7 @@ public final class UngroupedOverloadsTest {
   }
 
   @Test
-  public void ungroupedOverloadsRefactoringMultiple() throws Exception {
+  public void ungroupedOverloadsRefactoringMultiple() {
     refactoringHelper
         .addInput("UngroupedOverloadsRefactoringMultiple.java")
         .addOutput("UngroupedOverloadsRefactoringMultiple_expected.java")
@@ -76,7 +87,7 @@ public final class UngroupedOverloadsTest {
   }
 
   @Test
-  public void ungroupedOverloadsRefactoringInterleaved() throws Exception {
+  public void ungroupedOverloadsRefactoringInterleaved() {
     refactoringHelper
         .addInput("UngroupedOverloadsRefactoringInterleaved.java")
         .addOutput("UngroupedOverloadsRefactoringInterleaved_expected.java")
@@ -84,7 +95,7 @@ public final class UngroupedOverloadsTest {
   }
 
   @Test
-  public void ungroupedOverloadsRefactoringBelowCutoffLimit() throws Exception {
+  public void ungroupedOverloadsRefactoringBelowCutoffLimit() {
     // Here we have 4 methods so refactoring should be applied.
     refactoringHelper
         .addInputLines(
@@ -107,7 +118,7 @@ public final class UngroupedOverloadsTest {
   }
 
   @Test
-  public void ungroupedOverloadsRefactoring_fiveMethods() throws Exception {
+  public void ungroupedOverloadsRefactoring_fiveMethods() {
     refactoringHelper
         .addInputLines(
             "in/AboveLimit.java",
@@ -132,7 +143,7 @@ public final class UngroupedOverloadsTest {
 
   @Ignore // TODO(b/71818169): fix and re-enable
   @Test
-  public void staticAndNonStatic() throws Exception {
+  public void staticAndNonStatic() {
     refactoringHelper
         .addInputLines(
             "Test.java",
@@ -146,7 +157,7 @@ public final class UngroupedOverloadsTest {
   }
 
   @Test
-  public void staticAndNonStaticInterspersed() throws Exception {
+  public void staticAndNonStaticInterspersed() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -159,7 +170,7 @@ public final class UngroupedOverloadsTest {
   }
 
   @Test
-  public void suppressOnAnyMethod() throws Exception {
+  public void suppressOnAnyMethod() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -172,7 +183,7 @@ public final class UngroupedOverloadsTest {
   }
 
   @Test
-  public void javadoc() throws Exception {
+  public void javadoc() {
     refactoringHelper
         .addInputLines(
             "in/Test.java",
@@ -192,5 +203,26 @@ public final class UngroupedOverloadsTest {
             "  void bar() {}",
             "}")
         .doTest(TestMode.TEXT_MATCH);
+  }
+
+  @Test
+  public void diagnostic() {
+    compilationHelper
+        .addSourceLines(
+            "Test.java",
+            "class Test {",
+            "  // BUG: Diagnostic contains: found ungrouped overloads on line(s): 8, 10, 12",
+            "  private void foo() {}",
+            "  // BUG: Diagnostic contains: found ungrouped overloads on line(s): 8, 10, 12",
+            "  private void foo(int a) {}",
+            "  private void bar() {}",
+            "  // BUG: Diagnostic contains: found ungrouped overloads on line(s): 3, 5",
+            "  private void foo(int a, int b) {}",
+            "  // BUG: Diagnostic contains: found ungrouped overloads on line(s): 3, 5",
+            "  private void foo(int a, int b, int c) {}",
+            "  // BUG: Diagnostic contains: found ungrouped overloads on line(s): 3, 5",
+            "  private void foo(int a, int b, int c, int d) {}",
+            "}")
+        .doTest();
   }
 }

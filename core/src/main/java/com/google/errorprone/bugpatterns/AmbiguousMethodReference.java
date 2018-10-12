@@ -79,6 +79,17 @@ public class AmbiguousMethodReference extends BugChecker implements ClassTreeMat
       if (clash == null) {
         continue;
       }
+      // If the clashing group has 1 or 0 non-private methods, method references outside the file
+      // are unambiguous.
+      int nonPrivateMethodCount = 0;
+      for (MethodSymbol method : clash) {
+        if (!method.isPrivate()) {
+          nonPrivateMethodCount++;
+        }
+      }
+      if (nonPrivateMethodCount < 2) {
+        continue;
+      }
       clash.remove(msym);
       // ignore overridden inherited methods and hidden interface methods
       clash.removeIf(m -> types.isSubSignature(msym.type, m.type));
@@ -89,8 +100,7 @@ public class AmbiguousMethodReference extends BugChecker implements ClassTreeMat
           String.format(
               "This method's reference is ambiguous, its name and functional interface type"
                   + " are the same as: %s",
-              clash
-                  .stream()
+              clash.stream()
                   .map(m -> Signatures.prettyMethodSignature(origin, m))
                   .collect(joining(", ")));
       state.reportMatch(buildDescription(member).setMessage(message).build());

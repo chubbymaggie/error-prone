@@ -16,6 +16,8 @@
 
 package com.google.errorprone.suppliers;
 
+import static java.util.Objects.requireNonNull;
+
 import com.google.common.base.Function;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Iterables;
@@ -112,6 +114,7 @@ public class Suppliers {
    * @param typeString a string representation of a type, e.g., "java.util.List"
    */
   public static Supplier<Type> typeFromString(final String typeString) {
+    requireNonNull(typeString);
     return new Supplier<Type>() {
       @Override
       public Type get(VisitorState state) {
@@ -202,6 +205,14 @@ public class Suppliers {
         @Override
         public Type get(VisitorState state) {
           return state.getSymtab().exceptionType;
+        }
+      };
+
+  public static final Supplier<Type> THROWABLE_TYPE =
+      new Supplier<Type>() {
+        @Override
+        public Type get(VisitorState state) {
+          return state.getSymtab().throwableType;
         }
       };
 

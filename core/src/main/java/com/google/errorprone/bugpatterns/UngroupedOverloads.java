@@ -20,24 +20,30 @@ import static com.google.common.collect.Multimaps.toMultimap;
 import static com.google.errorprone.BugPattern.Category.JDK;
 import static com.google.errorprone.BugPattern.LinkType.CUSTOM;
 import static com.google.errorprone.BugPattern.SeverityLevel.SUGGESTION;
+import static com.google.errorprone.BugPattern.StandardTags.STYLE;
 import static com.google.errorprone.matchers.Description.NO_MATCH;
+import static java.util.stream.Collectors.joining;
 
 import com.google.auto.value.AutoValue;
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.LinkedHashMultimap;
 import com.google.common.collect.Streams;
 import com.google.errorprone.BugPattern;
+import com.google.errorprone.ErrorProneFlags;
 import com.google.errorprone.VisitorState;
 import com.google.errorprone.bugpatterns.BugChecker.ClassTreeMatcher;
 import com.google.errorprone.fixes.SuggestedFix;
 import com.google.errorprone.matchers.Description;
 import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.LineMap;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import com.sun.tools.javac.code.Symbol.MethodSymbol;
-import java.util.Collection;
+import com.sun.tools.javac.tree.JCTree;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Objects;
+import java.util.Map;
 import java.util.stream.Stream;
 import javax.lang.model.element.Name;
 
@@ -51,9 +57,17 @@ import javax.lang.model.element.Name;
     category = JDK,
     severity = SUGGESTION,
     linkType = CUSTOM,
+    tags = STYLE,
     link = "https://google.github.io/styleguide/javaguide.html#s3.4.2.1-overloads-never-split"
     )
 public class UngroupedOverloads extends BugChecker implements ClassTreeMatcher {
+
+  private final Boolean showFindingOnFirstOverloadOnly;
+
+  public UngroupedOverloads(ErrorProneFlags flags) {
+    showFindingOnFirstOverloadOnly =
+        flags.getBoolean("UngroupedOverloads:FindingsOnFirstOverload").orElse(false);
+  }
 
   @AutoValue
   abstract static class MemberWithIndex {
@@ -100,7 +114,8 @@ public class UngroupedOverloads extends BugChecker implements ClassTreeMatcher {
         .asMap()
         .forEach(
             (key, overloads) ->
-                checkOverloads(state, classTree.getMembers(), key.name(), overloads));
+                checkOverloads(
+                    state, classTree.getMembers(), key.name(), ImmutableList.copyOf(overloads)));
     return NO_MATCH;
   }
 
@@ -108,19 +123,23 @@ public class UngroupedOverloads extends BugChecker implements ClassTreeMatcher {
       VisitorState state,
       List<? extends Tree> members,
       Name name,
-      Collection<MemberWithIndex> overloads) {
+      ImmutableList<MemberWithIndex> overloads) {
     if (overloads.size() <= 1) {
       return;
     }
     // check if the indices of the overloads in the member list are sequential
     MemberWithIndex first = overloads.iterator().next();
-    boolean grouped =
-        Streams.zip(
-                Stream.iterate(first.index(), i -> i + 1),
-                overloads.stream().map(m -> m.index()),
-                (a, b) -> Objects.equals(a, b))
-            .allMatch(x -> x);
-    if (grouped) {
+    int prev = -1;
+    int group = 0;
+    Map<MemberWithIndex, Integer> groups = new LinkedHashMap<>();
+    for (MemberWithIndex overload : overloads) {
+      if (prev != -1 && prev != overload.index() - 1) {
+        group++;
+      }
+      groups.put(overload, group);
+      prev = overload.index();
+    }
+    if (group == 0) {
       return;
     }
     if (overloads.stream().anyMatch(m -> isSuppressed(m.tree()))) {
@@ -130,8 +149,7 @@ public class UngroupedOverloads extends BugChecker implements ClassTreeMatcher {
     // the first overload
     SuggestedFix.Builder fixBuilder = SuggestedFix.builder();
     StringBuilder sb = new StringBuilder("\n");
-    overloads
-        .stream()
+    overloads.stream()
         .filter(o -> o != first)
         .forEach(
             o -> {
@@ -142,13 +160,33 @@ public class UngroupedOverloads extends BugChecker implements ClassTreeMatcher {
             });
     fixBuilder.postfixWith(first.tree(), sb.toString());
     SuggestedFix fix = fixBuilder.build();
-    String message = String.format("Overloads of '%s' are not grouped together.", name);
+    LineMap lineMap = state.getPath().getCompilationUnit().getLineMap();
     // emit findings for each overload
-    overloads
-        .stream()
+    overloads.stream()
+        .limit(showFindingOnFirstOverloadOnly ? 1 : Long.MAX_VALUE)
         .forEach(
             o ->
                 state.reportMatch(
-                    buildDescription(o.tree()).addFix(fix).setMessage(message).build()));
+                    buildDescription(o.tree())
+                        .addFix(fix)
+                        .setMessage(createMessage(name, overloads, groups, lineMap, o))
+                        .build()));
+  }
+
+  private static String createMessage(
+      Name name,
+      ImmutableList<MemberWithIndex> overloads,
+      Map<MemberWithIndex, Integer> groups,
+      LineMap lineMap,
+      MemberWithIndex current) {
+    String ungroupedLines =
+        overloads.stream()
+            .filter(o -> !groups.get(o).equals(groups.get(current)))
+            .map(t -> lineMap.getLineNumber(((JCTree) t.tree()).getStartPosition()))
+            .map(String::valueOf)
+            .collect(joining(", "));
+    return String.format(
+        "Overloads of '%s' are not grouped together; found ungrouped overloads on line(s): %s",
+        name, ungroupedLines);
   }
 }

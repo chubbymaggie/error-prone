@@ -26,12 +26,6 @@
       <name>repo1.maven.org</name>
       <url>http://repo1.maven.org</url>
     </repository>
-    <!-- For the Android support library -->
-    <repository>
-      <id>google-android-support</id>
-      <name>maven.google.com</name>
-      <url>https://maven.google.com</url>
-    </repository>
   </repositories>
 
   <parent>
@@ -202,6 +196,13 @@
       <version>4.0-beta5</version>
       <scope>test</scope>
     </dependency>
+      <!-- Apache 2.0 -->
+    <dependency>
+      <groupId>com.google.inject.extensions</groupId>
+      <artifactId>guice-testlib</artifactId>
+      <version>4.0</version>
+      <scope>test</scope>
+    </dependency>
     <dependency>
       <!-- Apache 2.0 -->
       <groupId>com.google.gwt.inject</groupId>
@@ -316,13 +317,6 @@
     </dependency>
     <dependency>
       <!-- Apache 2.0 -->
-      <groupId>com.android.support</groupId>
-      <artifactId>support-annotations</artifactId>
-      <version>27.0.0</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <!-- Apache 2.0 -->
       <groupId>org.assertj</groupId>
       <artifactId>assertj-core</artifactId>
       <version>3.9.0</version>
@@ -360,6 +354,8 @@
                 <includes>
                   <include>com.github.kevinstern:software-and-algorithms</include>
                   <include>com.google.errorprone:error_prone_annotation</include>
+                  <include>com.google.errorprone:error_prone_annotations</include>
+                  <include>com.google.errorprone:error_prone_type_annotations</include>
                   <include>com.google.errorprone:error_prone_check_api</include>
                   <include>com.github.stephenc.jcip:jcip-annotations</include>
                   <include>org.pcollections:pcollections</include>
@@ -379,8 +375,7 @@
         <version>2.19.1</version>
         <configuration>
           <!-- set heap size to work around http://github.com/travis-ci/travis-ci/issues/3396 -->
-          <!-- put javac.jar on bootclasspath when executing tests -->
-          <argLine>-Xmx1024m -Xbootclasspath/p:${settings.localRepository}/com/google/errorprone/javac/${javac.version}/javac-${javac.version}.jar</argLine>
+          <argLine>-Xmx1g</argLine>
         </configuration>
       </plugin>
       <plugin>
@@ -420,6 +415,26 @@
           <version>${guava.version}</version>
         </dependency>
       </dependencies>
+    </profile>
+    <profile>
+      <id>java-8</id>
+      <activation>
+        <jdk>1.8</jdk>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-surefire-plugin</artifactId>
+            <version>2.19.1</version>
+            <configuration>
+              <!-- set heap size to work around http://github.com/travis-ci/travis-ci/issues/3396 -->
+              <!-- put javac.jar on bootclasspath when executing tests -->
+              <argLine>-Xmx1g -Xbootclasspath/p:${settings.localRepository}/com/google/errorprone/javac/${javac.version}/javac-${javac.version}.jar</argLine>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
     </profile>
   </profiles>
 </project>

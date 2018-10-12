@@ -32,12 +32,18 @@ import com.google.errorprone.bugpatterns.BugChecker.MethodTreeMatcher;
 import com.google.errorprone.fixes.SuggestedFix;
 import com.google.errorprone.matchers.Description;
 import com.google.errorprone.util.ASTHelpers;
+import com.sun.source.doctree.ParamTree;
 import com.sun.source.tree.ClassTree;
+import com.sun.source.tree.CompilationUnitTree;
 import com.sun.source.tree.MethodTree;
 import com.sun.source.tree.Tree;
 import com.sun.source.tree.TypeParameterTree;
+import com.sun.source.util.DocSourcePositions;
+import com.sun.source.util.DocTreeScanner;
+import com.sun.tools.javac.api.JavacTrees;
 import com.sun.tools.javac.code.Symbol;
 import com.sun.tools.javac.code.Symbol.TypeVariableSymbol;
+import com.sun.tools.javac.tree.DCTree.DCDocComment;
 import com.sun.tools.javac.tree.JCTree;
 import com.sun.tools.javac.tree.TreeScanner;
 import java.util.ArrayList;
@@ -81,41 +87,41 @@ public class TypeParameterShadowing extends BugChecker
     if (symbol == null) {
       return Description.NO_MATCH;
     }
+
     List<TypeVariableSymbol> enclosingTypeSymbols = typeVariablesEnclosing(symbol);
     if (enclosingTypeSymbols.isEmpty()) {
       return Description.NO_MATCH;
     }
 
+    // See if the passed in list typeParameters exist in the enclosingTypeSymbols
     List<TypeVariableSymbol> conflictingTypeSymbols = new ArrayList<>();
     typeParameters.forEach(
         param ->
-            enclosingTypeSymbols
-                .stream()
+            enclosingTypeSymbols.stream()
                 .filter(tvs -> tvs.name.contentEquals(param.getName()))
                 .findFirst()
                 .ifPresent(conflictingTypeSymbols::add));
-
     if (conflictingTypeSymbols.isEmpty()) {
       return Description.NO_MATCH;
     }
 
+    // Describes what's the conflicting type and where it is
     Description.Builder descriptionBuilder = buildDescription(tree);
     String message =
         "Found aliased type parameters: "
-            + conflictingTypeSymbols
-                .stream()
+            + conflictingTypeSymbols.stream()
                 .map(tvs -> tvs.name + " declared in " + tvs.owner.getSimpleName())
                 .collect(Collectors.joining("\n"));
 
     descriptionBuilder.setMessage(message);
 
+    // Map conflictingTypeSymbol to its new name
     Set<String> typeVarsInScope =
         Streams.concat(enclosingTypeSymbols.stream(), symbol.getTypeParameters().stream())
             .map(v -> v.name.toString())
             .collect(toImmutableSet());
     SuggestedFix.Builder fixBuilder = SuggestedFix.builder();
-    conflictingTypeSymbols
-        .stream()
+    conflictingTypeSymbols.stream()
         .map(
             v ->
                 renameTypeVariable(
@@ -129,19 +135,21 @@ public class TypeParameterShadowing extends BugChecker
     return descriptionBuilder.build();
   }
 
-  private TypeParameterTree typeParameterInList(
-      List<? extends TypeParameterTree> typeParameters, TypeVariableSymbol v) {
-    return typeParameters
-        .stream()
+  // Package-private for TypeNameShadowing
+  static TypeParameterTree typeParameterInList(
+      List<? extends TypeParameterTree> typeParameters, Symbol v) {
+    return typeParameters.stream()
         .filter(t -> t.getName().contentEquals(v.name))
         .collect(MoreCollectors.onlyElement());
   }
 
   private static final Pattern TRAILING_DIGIT_EXTRACTOR = Pattern.compile("^(.*?)(\\d+)$");
+
   // T -> T2
   // T2 -> T3
   // T -> T4 (if T2 and T3 already exist)
-  private String replacementTypeVarName(Name name, Set<String> superTypeVars) {
+  // Package-private for TypeNameShadowing
+  static String replacementTypeVarName(Name name, Set<String> superTypeVars) {
     String baseName = name.toString();
     int typeVarNum = 2;
 
@@ -197,9 +205,37 @@ public class TypeParameterShadowing extends BugChecker
                 }
               }
             });
+    DCDocComment docCommentTree =
+        (DCDocComment) JavacTrees.instance(state.context).getDocCommentTree(state.getPath());
+    if (docCommentTree != null) {
+      docCommentTree.accept(
+          new DocTreeScanner<Void, Void>() {
+            @Override
+            public Void visitParam(ParamTree paramTree, Void unused) {
+              if (paramTree.isTypeParameter()
+                  && paramTree.getName().getName().contentEquals(name)) {
+                DocSourcePositions positions =
+                    JavacTrees.instance(state.context).getSourcePositions();
+                CompilationUnitTree compilationUnitTree = state.getPath().getCompilationUnit();
+                int startPos =
+                    (int)
+                        positions.getStartPosition(
+                            compilationUnitTree, docCommentTree, paramTree.getName());
+                int endPos =
+                    (int)
+                        positions.getEndPosition(
+                            compilationUnitTree, docCommentTree, paramTree.getName());
+                fixBuilder.replace(startPos, endPos, typeVarReplacement);
+              }
+              return super.visitParam(paramTree, null);
+            }
+          },
+          null);
+    }
     return fixBuilder.build();
   }
 
+  // Get list of type params of every enclosing class
   private static List<TypeVariableSymbol> typeVariablesEnclosing(Symbol sym) {
     List<TypeVariableSymbol> typeVarScopes = new ArrayList<>();
     outer:

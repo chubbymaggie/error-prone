@@ -21,8 +21,8 @@ import static com.google.errorprone.BugPattern.SeverityLevel.ERROR;
 
 import com.google.common.io.Resources;
 import com.google.errorprone.BugPattern;
-import java.io.IOError;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 
 /** Checks for uses of classes, fields, or methods that are not compatible with JDK 7 */
 @BugPattern(
@@ -32,7 +32,10 @@ import java.io.IOException;
         "Code that needs to be compatible with Java 7 cannot use types or members"
             + " that are only present in the JDK 8 class libraries",
     category = JDK,
-    severity = ERROR)
+    severity = ERROR,
+    suppressionAnnotations = {
+      SuppressWarnings.class
+    })
 public class Java7ApiChecker extends ApiDiffChecker {
 
   static final ApiDiff API_DIFF = loadApiDiff();
@@ -65,11 +68,13 @@ public class Java7ApiChecker extends ApiDiffChecker {
                                       "(Ljava/lang/Object;Ljava/lang/Object;)Z"))));
       return ApiDiff.fromProto(diffBuilder.build());
     } catch (IOException e) {
-      throw new IOError(e);
+      throw new UncheckedIOException(e);
     }
   }
 
   public Java7ApiChecker() {
-    super(API_DIFF);
+    super(
+        API_DIFF
+        );
   }
 }

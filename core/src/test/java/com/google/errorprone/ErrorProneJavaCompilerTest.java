@@ -45,12 +45,12 @@ import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.MethodTree;
 import java.io.ByteArrayOutputStream;
-import java.io.IOError;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.UncheckedIOException;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -125,7 +125,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void fileWithErrorIntegrationTest() throws Exception {
+  public void fileWithErrorIntegrationTest() {
     CompilationResult result =
         doCompile(
             Arrays.asList("bugpatterns/testdata/SelfAssignmentPositiveCases1.java"),
@@ -138,7 +138,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testWithDisabledCheck() throws Exception {
+  public void testWithDisabledCheck() {
     CompilationResult result =
         doCompile(
             Arrays.asList("bugpatterns/testdata/SelfAssignmentPositiveCases1.java"),
@@ -155,7 +155,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testWithCheckPromotedToError() throws Exception {
+  public void testWithCheckPromotedToError() {
     CompilationResult result =
         doCompile(
             Arrays.asList("bugpatterns/testdata/WaitNotInLoopPositiveCases.java"),
@@ -178,7 +178,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testWithCheckDemotedToWarning() throws Exception {
+  public void testWithCheckDemotedToWarning() {
     CompilationResult result =
         doCompile(
             Arrays.asList("bugpatterns/testdata/SelfAssignmentPositiveCases1.java"),
@@ -201,7 +201,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testWithNonDefaultCheckOn() throws Exception {
+  public void testWithNonDefaultCheckOn() {
     CompilationResult result =
         doCompile(
             Arrays.asList("bugpatterns/testdata/EmptyIfStatementPositiveCases.java"),
@@ -223,7 +223,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testBadFlagThrowsException() throws Exception {
+  public void testBadFlagThrowsException() {
     try {
       doCompile(
           Arrays.asList("bugpatterns/testdata/EmptyIfStatementPositiveCases.java"),
@@ -245,7 +245,7 @@ public class ErrorProneJavaCompilerTest {
   public static class UnsuppressibleArrayEquals extends ArrayEquals {}
 
   @Test
-  public void testCantDisableNonDisableableCheck() throws Exception {
+  public void testCantDisableNonDisableableCheck() {
     try {
       doCompile(
           Arrays.asList("bugpatterns/testdata/ArrayEqualsPositiveCases.java"),
@@ -258,7 +258,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testWithCustomCheckPositive() throws Exception {
+  public void testWithCustomCheckPositive() {
     CompilationResult result =
         doCompile(
             Arrays.asList("bugpatterns/testdata/BadShiftAmountPositiveCases.java"),
@@ -272,7 +272,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testWithCustomCheckNegative() throws Exception {
+  public void testWithCustomCheckNegative() {
     CompilationResult result =
         doCompile(
             Arrays.asList("bugpatterns/testdata/SelfAssignmentPositiveCases1.java"),
@@ -283,7 +283,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testSeverityResetsAfterOverride() throws Exception {
+  public void testSeverityResetsAfterOverride() throws IOException {
     DiagnosticTestHelper diagnosticHelper = new DiagnosticTestHelper();
     ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
     PrintWriter printWriter = new PrintWriter(new OutputStreamWriter(outputStream, UTF_8), true);
@@ -381,7 +381,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testFixGeneratedConstructor() throws Exception {
+  public void testFixGeneratedConstructor() {
     CompilationResult result =
         doCompile(
             Arrays.asList("testdata/DeleteGeneratedConstructorTestCase.java"),
@@ -396,7 +396,7 @@ public class ErrorProneJavaCompilerTest {
   }
 
   @Test
-  public void testWithExcludedPaths() throws Exception {
+  public void testWithExcludedPaths() {
     CompilationResult result =
         doCompile(
             Arrays.asList("bugpatterns/testdata/SelfAssignmentPositiveCases1.java"),
@@ -458,7 +458,7 @@ public class ErrorProneJavaCompilerTest {
     try {
       fileManager.close();
     } catch (IOException e) {
-      throw new IOError(e);
+      throw new UncheckedIOException(e);
     }
     return new CompilationResult(task.call(), diagnosticHelper);
   }

@@ -37,7 +37,7 @@ void approachIntersection(TrafficLightColour state) {
 The definition of control flow in [JLS §14.21] does not consider whether enum
 switches handle all cases, so in the example above javac will complain that
 `stop` is not definitely assigned. This is because adding constants to an enum
-is a binary compatble change (see [JLS §13.4.26]), so the spec allows for the
+is a binary compatible change (see [JLS §13.4.26]), so the spec allows for the
 possibility that `TrafficLightColour` is defined in another library, and after
 compiling our code we update to a new version of the library (without
 recompiling) that adds another colour of traffic light (say, `PURPLE`) that the
@@ -122,3 +122,16 @@ boolean isReady(State state) {
   return false;
 }
 ```
+
+## Cases with UNRECOGNIZED
+
+In situations where a switch handles all values of a proto-generated enum except
+for UNRECOGNIZED, UNRECOGNIZED is explicitly handled and the default is removed.
+This is preferred practice because it will catch unexpected enum types at
+compiletime instead of runtime.
+
+If the switch statement cannot complete normally, the default is deleted and its
+statements are moved after the switch statement. Case UNRECOGNIZED is added with
+a break.
+
+If it can complete, we merge the default with an added UNRECOGNIZED case.

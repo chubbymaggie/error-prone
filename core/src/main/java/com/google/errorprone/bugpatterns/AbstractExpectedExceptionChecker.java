@@ -36,7 +36,6 @@ import com.google.errorprone.VisitorState;
 import com.google.errorprone.bugpatterns.BugChecker.MethodTreeMatcher;
 import com.google.errorprone.fixes.Fix;
 import com.google.errorprone.fixes.SuggestedFix;
-import com.google.errorprone.fixes.SuggestedFix.Builder;
 import com.google.errorprone.fixes.SuggestedFixes;
 import com.google.errorprone.matchers.Description;
 import com.google.errorprone.matchers.Matcher;
@@ -145,7 +144,7 @@ public abstract class AbstractExpectedExceptionChecker extends BugChecker
     String exceptionClassExpr = "Throwable.class";
     // additional assertions to perform on the captured exception (if any)
     List<String> newAsserts = new ArrayList<>();
-    Builder fix = SuggestedFix.builder();
+    SuggestedFix.Builder fix = SuggestedFix.builder();
     for (Tree expectation : expectations) {
       MethodInvocationTree invocation =
           (MethodInvocationTree) ((ExpressionStatementTree) expectation).getExpression();
@@ -274,7 +273,7 @@ public abstract class AbstractExpectedExceptionChecker extends BugChecker
       fix.prefixWith(throwingStatements.get(0), fixPrefix.toString());
       if (useExpressionLambda) {
         fix.postfixWith(((ExpressionStatementTree) throwingStatements.get(0)).getExpression(), ")");
-        fix.postfixWith(getLast(throwingStatements), Joiner.on('\n').join(newAsserts));
+        fix.postfixWith(getLast(throwingStatements), '\n' + Joiner.on('\n').join(newAsserts));
       } else {
         fix.postfixWith(getLast(throwingStatements), "});\n" + Joiner.on('\n').join(newAsserts));
       }

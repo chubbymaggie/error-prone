@@ -35,7 +35,7 @@ public class NonFinalCompileTimeConstantTest {
   }
 
   @Test
-  public void positive() throws Exception {
+  public void positive() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -50,7 +50,7 @@ public class NonFinalCompileTimeConstantTest {
   }
 
   @Test
-  public void positiveTwoParams() throws Exception {
+  public void positiveTwoParams() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -65,7 +65,7 @@ public class NonFinalCompileTimeConstantTest {
   }
 
   @Test
-  public void positiveOneOfTwoParams() throws Exception {
+  public void positiveOneOfTwoParams() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -82,7 +82,7 @@ public class NonFinalCompileTimeConstantTest {
   }
 
   @Test
-  public void negative() throws Exception {
+  public void negative() {
     compilationHelper
         .addSourceLines(
             "Test.java",
@@ -94,13 +94,25 @@ public class NonFinalCompileTimeConstantTest {
   }
 
   @Test
-  public void negativeEffectivelyFinal() throws Exception {
+  public void negativeEffectivelyFinal() {
     compilationHelper
         .addSourceLines(
             "Test.java",
             "import com.google.errorprone.annotations.CompileTimeConstant;",
             "public class Test {",
             "  public void f(@CompileTimeConstant Object x) {}",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void negativeInterface() {
+    compilationHelper
+        .addSourceLines(
+            "Test.java",
+            "import com.google.errorprone.annotations.CompileTimeConstant;",
+            "public interface Test {",
+            "  public void f(@CompileTimeConstant Object x);",
             "}")
         .doTest();
   }

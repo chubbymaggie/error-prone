@@ -169,7 +169,7 @@ public class BugCheckerInfo implements Serializable {
         disableable);
   }
 
-  private static final String URL_FORMAT = "https://errorprone.info/bugpattern/%s.md";
+  private static final String URL_FORMAT = "https://errorprone.info/bugpattern/%s";
 
   private static String createLinkUrl(BugPattern pattern) {
     switch (pattern.linkType()) {
@@ -185,10 +185,9 @@ public class BugCheckerInfo implements Serializable {
         return pattern.link();
       case NONE:
         return null;
-      default:
-        throw new IllegalStateException(
-            "Unexpected value for linkType element of @BugPattern: " + pattern.linkType());
     }
+    throw new AssertionError(
+        "Unexpected value for linkType element of @BugPattern: " + pattern.linkType());
   }
 
   /**

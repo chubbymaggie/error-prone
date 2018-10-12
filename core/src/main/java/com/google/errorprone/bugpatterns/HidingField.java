@@ -24,7 +24,6 @@ import com.google.errorprone.BugPattern;
 import com.google.errorprone.VisitorState;
 import com.google.errorprone.bugpatterns.BugChecker.ClassTreeMatcher;
 import com.google.errorprone.matchers.Description;
-import com.google.errorprone.matchers.Description.Builder;
 import com.google.errorprone.util.ASTHelpers;
 import com.sun.source.tree.ClassTree;
 import com.sun.source.tree.VariableTree;
@@ -60,9 +59,7 @@ public class HidingField extends BugChecker implements ClassTreeMatcher {
   @Override
   public Description matchClass(ClassTree classTree, VisitorState visitorState) {
     List<VariableTree> originalClassMembers =
-        classTree
-            .getMembers()
-            .stream()
+        classTree.getMembers().stream()
             .filter(mem -> mem instanceof VariableTree)
             .map(mem -> (VariableTree) mem)
             .filter(
@@ -79,8 +76,7 @@ public class HidingField extends BugChecker implements ClassTreeMatcher {
       List<Symbol> parentElements = parentSymbol.getEnclosedElements();
 
       Map<Name, VarSymbol> parentMembers =
-          parentElements
-              .stream()
+          parentElements.stream()
               .filter(mem -> (mem instanceof VarSymbol))
               .map(mem -> (VarSymbol) mem)
               .filter(mem -> (!mem.isPrivate() && !mem.getModifiers().contains(Modifier.STATIC)))
@@ -117,7 +113,7 @@ public class HidingField extends BugChecker implements ClassTreeMatcher {
           continue;
         }
 
-        Builder matchDesc = buildDescription(origVariable);
+        Description.Builder matchDesc = buildDescription(origVariable);
 
         matchDesc.setMessage(
             "Hiding fields of superclasses may cause confusion and errors. "

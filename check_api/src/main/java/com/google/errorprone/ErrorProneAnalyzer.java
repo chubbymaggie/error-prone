@@ -22,6 +22,7 @@ import static com.google.common.base.Verify.verify;
 
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
+import com.google.errorprone.BugPattern.SeverityLevel;
 import com.google.errorprone.scanner.ErrorProneScannerTransformer;
 import com.google.errorprone.scanner.ScannerSupplier;
 import com.google.errorprone.util.ASTHelpers;
@@ -62,7 +63,7 @@ public class ErrorProneAnalyzer implements TaskListener {
         scansPlugins(scannerSupplier, errorProneOptions, context),
         errorProneOptions,
         context,
-        JavacErrorDescriptionListener.provider());
+        JavacErrorDescriptionListener.provider(context));
   }
 
   private static Supplier<CodeTransformer> scansPlugins(
@@ -94,17 +95,6 @@ public class ErrorProneAnalyzer implements TaskListener {
         descriptionListenerFactory);
   }
 
-  // Used by Bazel still
-  @SuppressWarnings("unused")
-  public ErrorProneAnalyzer(
-      ScannerSupplier scannerSupplier, ErrorProneOptions errorProneOptions, Context context) {
-    this(
-        scansPlugins(scannerSupplier, errorProneOptions, context),
-        errorProneOptions,
-        context,
-        JavacErrorDescriptionListener.provider());
-  }
-
   private ErrorProneAnalyzer(
       Supplier<CodeTransformer> transformer,
       ErrorProneOptions errorProneOptions,
@@ -116,12 +106,14 @@ public class ErrorProneAnalyzer implements TaskListener {
     this.descriptionListenerFactory = checkNotNull(descriptionListenerFactory);
   }
 
+  private int errorProneErrors = 0;
+
   @Override
   public void finished(TaskEvent taskEvent) {
     if (taskEvent.getKind() != Kind.ANALYZE) {
       return;
     }
-    if (JavaCompiler.instance(context).errorCount() > 0) {
+    if (JavaCompiler.instance(context).errorCount() > errorProneErrors) {
       return;
     }
     TreePath path = JavacTrees.instance(context).getPath(taskEvent.getTypeElement());
@@ -136,6 +128,13 @@ public class ErrorProneAnalyzer implements TaskListener {
     JCCompilationUnit compilation = (JCCompilationUnit) path.getCompilationUnit();
     DescriptionListener descriptionListener =
         descriptionListenerFactory.getDescriptionListener(log, compilation);
+    DescriptionListener countingDescriptionListener =
+        d -> {
+          if (d.severity == SeverityLevel.ERROR) {
+            errorProneErrors++;
+          }
+          descriptionListener.onDescribed(d);
+        };
     JavaFileObject originalSource = log.useSource(compilation.getSourceFile());
     try {
       if (shouldExcludeSourceFile(compilation.getSourceFile())) {
@@ -145,14 +144,14 @@ public class ErrorProneAnalyzer implements TaskListener {
         // We only get TaskEvents for compilation units if they contain no package declarations
         // (e.g. package-info.java files).  In this case it's safe to analyze the
         // CompilationUnitTree immediately.
-        transformer.get().apply(path, subContext, descriptionListener);
+        transformer.get().apply(path, subContext, countingDescriptionListener);
       } else if (finishedCompilation(path.getCompilationUnit())) {
         // Otherwise this TaskEvent is for a ClassTree, and we can scan the whole
         // CompilationUnitTree once we've seen all the enclosed classes.
-        transformer.get().apply(new TreePath(compilation), subContext, descriptionListener);
+        transformer.get().apply(new TreePath(compilation), subContext, countingDescriptionListener);
       }
     } catch (ErrorProneError e) {
-      e.logFatalError(log);
+      e.logFatalError(log, context);
       // let the exception propagate to javac's main, where it will cause the compilation to
       // terminate with Result.ABNORMAL
       throw e;
